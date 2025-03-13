@@ -1,0 +1,34 @@
+services:
+  app:
+    build: .
+    image: php:8.2-apache
+    container_name: abcde_app
+    working_dir: /var/www/html
+    volumes:
+      - .:/var/www/html
+      - ./docker/000-default.conf:/etc/apache2/sites-available/000-default.conf
+    ports:
+      - "8080:80"
+    depends_on:
+      - db
+    command: >
+      bash -c "chown -R www-data:www-data /var/www/html && apache2-foreground"
+      bash -c "a2enmod rewrite && apache2-foreground"
+
+  db:
+    image: mysql:8
+    container_name: abcde_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: abcde_db
+      MYSQL_USER: abcde_user
+      MYSQL_PASSWORD: abcde_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - .:/var/www/html
+      - ./000-default.conf:/etc/apache2/sites-available/000-default.conf
+
+volumes:
+  db_data:

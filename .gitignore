@@ -48,20 +48,20 @@ Vagrantfile
 #-------------------------
 # Temporary Files
 #-------------------------
-writable/cache/*
-!writable/cache/index.html
+api/writable/cache/*
+!api/writable/cache/index.html
 
-writable/logs/*
-!writable/logs/index.html
+api/writable/logs/*
+!api/writable/logs/index.html
 
-writable/session/*
-!writable/session/index.html
+api/writable/session/*
+!api/writable/session/index.html
 
-writable/uploads/*
-!writable/uploads/index.html
+api/writable/uploads/*
+!api/writable/uploads/index.html
 
-writable/debugbar/*
-!writable/debugbar/.gitkeep
+api/writable/debugbar/*
+!api/writable/debugbar/.gitkeep
 
 php_errors.log
 
@@ -117,7 +117,6 @@ nb-configuration.xml
 *.sublime-workspace
 *.sublime-project
 .phpintel
-/api/
 
 # Visual Studio Code
 .vscode/
