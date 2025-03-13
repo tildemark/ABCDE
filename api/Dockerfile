@@ -6,7 +6,8 @@ RUN apt update && apt install -y \
     libicu-dev \
     libzip-dev \
     libicu-dev zip unzip \
-    && docker-php-ext-install intl zip pdo pdo_mysql
+    && docker-php-ext-install mysqli intl zip pdo pdo_mysql \
+    && docker-php-ext-enable mysqli
 
 # Enable Apache mod_rewrite (required for CodeIgniter)
 RUN a2enmod rewrite

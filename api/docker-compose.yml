@@ -11,6 +11,11 @@ services:
       - "8080:80"
     depends_on:
       - db
+    environment:
+      - DB_HOST=db
+      - DB_NAME=abcde_db
+      - DB_USER=abcde_user
+      - DB_PASS=abcde_password
     command: >
       bash -c "chown -R www-data:www-data /var/www/html && apache2-foreground"
       bash -c "a2enmod rewrite && apache2-foreground"
