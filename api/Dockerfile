@@ -3,11 +3,20 @@ FROM php:8.2-apache
 
 # Enable required PHP extensions
 RUN apt update && apt install -y \
+    curl \
     libicu-dev \
     libzip-dev \
-    libicu-dev zip unzip \
-    && docker-php-ext-install mysqli intl zip pdo pdo_mysql \
-    && docker-php-ext-enable mysqli
+    zip unzip \
+    wget \
+    && docker-php-ext-install \ 
+    mysqli \
+    intl \
+    zip \
+    pdo \
+    pdo_mysql \
+    && docker-php-ext-enable mysqli \
+    && curl -sS https://getcomposer.org/installer | php \
+    && mv composer.phar /usr/local/bin/composer
 
 # Enable Apache mod_rewrite (required for CodeIgniter)
 RUN a2enmod rewrite
