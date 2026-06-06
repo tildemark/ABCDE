@@ -1,125 +1,43 @@
-#-------------------------
-# Operating Specific Junk Files
-#-------------------------
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# OS X
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
 .DS_Store
-.AppleDouble
-.LSOverride
+*.pem
 
-# OS X Thumbnails
-._*
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 
-# Windows image file caches
-Thumbs.db
-ehthumbs.db
-Desktop.ini
+# env files (can opt-in for committing if needed)
+.env*
 
-# Recycle Bin used on file shares
-$RECYCLE.BIN/
+# vercel
+.vercel
 
-# Windows Installer files
-*.cab
-*.msi
-*.msm
-*.msp
+# typescript
+*.tsbuildinfo
+next-env.d.ts
 
-# Windows shortcuts
-*.lnk
-
-# Linux
-*~
-
-# KDE directory preferences
-.directory
-
-# Linux trash folder which might appear on any partition or disk
-.Trash-*
-
-#-------------------------
-# Environment Files
-#-------------------------
-# These should never be under version control,
-# as it poses a security risk.
-.env
-.vagrant
-Vagrantfile
-
-#-------------------------
-# Temporary Files
-#-------------------------
-api/writable/cache/*
-!api/writable/cache/index.html
-
-api/writable/logs/*
-!api/writable/logs/index.html
-
-api/writable/session/*
-!api/writable/session/index.html
-
-api/writable/uploads/*
-!api/writable/uploads/index.html
-
-api/writable/debugbar/*
-!api/writable/debugbar/.gitkeep
-
-php_errors.log
-
-#-------------------------
-# User Guide Temp Files
-#-------------------------
-user_guide_src/build/*
-user_guide_src/cilexer/build/*
-user_guide_src/cilexer/dist/*
-user_guide_src/cilexer/pycilexer.egg-info/*
-
-#-------------------------
-# Test Files
-#-------------------------
-tests/coverage*
-
-# Don't save phpunit under version control.
-phpunit
-
-#-------------------------
-# Composer
-#-------------------------
-vendor/
-
-#-------------------------
-# IDE / Development Files
-#-------------------------
-
-# Modules Testing
-_modules/*
-
-# phpenv local config
-.php-version
-
-# Jetbrains editors (PHPStorm, etc)
-.idea/
-*.iml
-
-# Netbeans
-nbproject/
-build/
-nbbuild/
-dist/
-nbdist/
-nbactions.xml
-nb-configuration.xml
-.nb-gradle/
-
-# Sublime Text
-*.tmlanguage.cache
-*.tmPreferences.cache
-*.stTheme.cache
-*.sublime-workspace
-*.sublime-project
-.phpintel
-
-# Visual Studio Code
-.vscode/
-
-/results/
-/phpunit*.xml
+/src/generated/prisma

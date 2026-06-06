@@ -1,30 +1,36 @@
-# All Business Centralized Data ERP System (ABCDE)
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Getting Started
 
-## License
+First, run the development server:
 
-This project is dual-licensed.
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
+```
 
-* For open-source use, see the license specified in the GitHub license tab.
-* Commercial licenses are available for users who require professional support, specific customizations, or exemption from the open-source license.
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-### Dual Licensing Model
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-This project utilizes a dual licensing model to offer flexibility to our users.
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-* **Open-Source License:** The project is available under the AGPL-3.0 license for users who wish to use, modify, and distribute the software in accordance with the license terms. This allows for community contributions and transparency.
-* **Commercial License:** We offer commercial licenses for users who require:
-    * Professional support and maintenance.
-    * Specific customizations tailored to their business needs.
-    * Exemption from the copyleft provisions of the open-source license.
-    * Indemnification.
+## Learn More
 
-This model allows us to support the project's development while providing a robust solution for businesses with specific requirements.
+To learn more about Next.js, take a look at the following resources:
 
-### Commercial License Acquisition
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-To inquire about commercial licensing options, please contact us at derf@sanchez.ph. We will be happy to discuss your specific needs and provide you with the appropriate license agreement.
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-### Note Regarding AGPLv3 (If Applicable)
+## Deploy on Vercel
 
-If you are using this software as a network service, please be aware of the AGPLv3's requirements regarding the release of modified source code.
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

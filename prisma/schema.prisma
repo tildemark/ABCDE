@@ -1,0 +1,292 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Tenant {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporateName  String         @map("corporate_name") @db.VarChar(255)
+  registeredTin  String?        @unique @map("registered_tin") @db.VarChar(50)
+  industry       String?        @db.VarChar(100)
+  sssId          String?        @map("sss_id") @db.VarChar(50)
+  philhealthId   String?        @map("philhealth_id") @db.VarChar(50)
+  pagibigId      String?        @map("pagibig_id") @db.VarChar(50)
+  birBranchCode  String?        @map("bir_branch_code") @db.VarChar(10)
+  rdoCode        String?        @map("rdo_code") @db.VarChar(10)
+  companyType    String?        @default("OPERATING") @map("company_type") @db.VarChar(50)
+  parentTenantId String?        @map("parent_tenant_id") @db.Uuid
+  parentTenant   Tenant?        @relation("CorporateHierarchy", fields: [parentTenantId], references: [id], onDelete: SetNull)
+  subsidiaries   Tenant[]       @relation("CorporateHierarchy")
+  createdAt      DateTime?      @default(now()) @map("created_at") @db.Timestamptz(6)
+  
+  license        TenantLicense?
+  branches       Branch[]
+  departments    Department[]
+  employees      Employee[]
+  leaveBalances  LeaveBalance[]
+  documents      EmployeeDocument[]
+  consentLogs    ConsentLog[]
+  auditLogs      AuditLog[]
+  people         Person[]
+  users          User[]
+  roles          Role[]
+
+  @@map("tenants")
+}
+
+model TenantLicense {
+  tenantId       String    @id @map("tenant_id") @db.Uuid
+  hasHris        Boolean?  @default(true) @map("has_hris")
+  hasTimekeeping Boolean?  @default(false) @map("has_timekeeping")
+  hasPayroll     Boolean?  @default(false) @map("has_payroll")
+  maxEmployees   Int?      @default(50) @map("max_employees")
+  updatedAt      DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+  
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_licenses")
+}
+
+model Branch {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String?      @map("tenant_id") @db.Uuid
+  name           String       @db.VarChar(150)
+  region         String?      @db.VarChar(100)
+  isHeadquarters Boolean?     @default(false) @map("is_headquarters")
+  registeredTin  String?        @map("registered_tin") @db.VarChar(50)
+  sssId          String?        @map("sss_id") @db.VarChar(50)
+  philhealthId   String?        @map("philhealth_id") @db.VarChar(50)
+  pagibigId      String?        @map("pagibig_id") @db.VarChar(50)
+  birBranchCode  String?        @map("bir_branch_code") @db.VarChar(10)
+  rdoCode        String?        @map("rdo_code") @db.VarChar(10)
+  entityType     String?        @default("BRANCH") @map("entity_type") @db.VarChar(50)
+  createdAt      DateTime?    @default(now()) @map("created_at") @db.Timestamptz(6)
+  
+  tenant         Tenant?      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  departments    Department[]
+  employees      Employee[]
+
+  @@map("branches")
+}
+
+model Department {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String?    @map("tenant_id") @db.Uuid
+  branchId    String?    @map("branch_id") @db.Uuid
+  name        String     @db.VarChar(150)
+  managerId   String?    @map("manager_id") @db.Uuid
+
+  tenant      Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch      Branch?    @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  manager     Employee?  @relation("DeptManager", fields: [managerId], references: [id], onDelete: SetNull)
+  employees   Employee[] @relation("EmpDept")
+
+  @@map("departments")
+}
+
+model Person {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  firstName     String    @map("first_name") @db.VarChar(100)
+  lastName      String    @map("last_name") @db.VarChar(100)
+  middleName    String?   @map("middle_name") @db.VarChar(100)
+  personalEmail String?   @map("personal_email") @db.VarChar(150)
+  phone         String?   @db.VarChar(50)
+  birthDate     DateTime? @map("birth_date") @db.Date
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee      Employee?
+  user          User?
+
+  @@map("people")
+}
+
+model Employee {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  personId         String             @unique @map("person_id") @db.Uuid
+  tenantId         String             @map("tenant_id") @db.Uuid
+  branchId         String?            @map("branch_id") @db.Uuid
+  departmentId     String?            @map("department_id") @db.Uuid
+  employeeCode     String             @map("employee_code") @db.VarChar(50)
+  employmentStatus String?            @default("Active") @map("employment_status") @db.VarChar(50)
+  payGroup         String?            @default("Standard") @map("pay_group") @db.VarChar(50)
+  customAttributes Json?              @default("{}") @map("custom_attributes")
+  createdAt        DateTime?          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime?          @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  person           Person             @relation(fields: [personId], references: [id], onDelete: Cascade)
+  tenant           Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch           Branch?            @relation(fields: [branchId], references: [id])
+  department       Department?        @relation("EmpDept", fields: [departmentId], references: [id])
+  
+  managedDepts     Department[]       @relation("DeptManager")
+  leaveBalances    LeaveBalance[]
+  uploadedDocs     EmployeeDocument[] @relation("UploadedBy")
+  documents        EmployeeDocument[] @relation("EmployeeDocs")
+  consentLogs      ConsentLog[]
+
+  @@unique([tenantId, employeeCode])
+  @@map("employees")
+}
+
+model User {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  personId     String     @unique @map("person_id") @db.Uuid
+  tenantId     String     @map("tenant_id") @db.Uuid
+  loginEmail   String     @unique @map("login_email") @db.VarChar(150)
+  passwordHash String?    @map("password_hash") @db.VarChar(255)
+  isActive     Boolean    @default(true) @map("is_active")
+  roleId       String?    @map("role_id") @db.Uuid
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  
+  person       Person     @relation(fields: [personId], references: [id], onDelete: Cascade)
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role         Role?      @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  userOverrides UserPermissionOverride[]
+
+  @@map("users")
+}
+
+model Role {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String       @map("tenant_id") @db.Uuid
+  name        String       @db.VarChar(100)
+  description String?
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users       User[]
+  permissions Permission[]
+  rolePermissions RoleModulePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String   @unique @db.VarChar(100)
+  name        String   @db.VarChar(100)
+  description String?
+  roles       Role[]
+
+  @@map("permissions")
+}
+
+model SystemModule {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String   @unique @db.VarChar(50)
+  name        String   @db.VarChar(100)
+  category    String   @db.VarChar(50)
+  description String?
+
+  rolePermissions RoleModulePermission[]
+  userOverrides   UserPermissionOverride[]
+
+  @@map("system_modules")
+}
+
+model RoleModulePermission {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  roleId         String   @map("role_id") @db.Uuid
+  systemModuleId String   @map("system_module_id") @db.Uuid
+  
+  canRead        Boolean  @default(false) @map("can_read")
+  canCreate      Boolean  @default(false) @map("can_create")
+  canWrite       Boolean  @default(false) @map("can_write")
+  canDelete      Boolean  @default(false) @map("can_delete")
+  canPrint       Boolean  @default(false) @map("can_print")
+  canReport      Boolean  @default(false) @map("can_report")
+  canImport      Boolean  @default(false) @map("can_import")
+  canExport      Boolean  @default(false) @map("can_export")
+  canShare       Boolean  @default(false) @map("can_share")
+  canEmail       Boolean  @default(false) @map("can_email")
+
+  role           Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  systemModule   SystemModule @relation(fields: [systemModuleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, systemModuleId])
+  @@map("role_module_permissions")
+}
+
+model UserPermissionOverride {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  systemModuleId String   @map("system_module_id") @db.Uuid
+  action         String   @db.VarChar(50)
+  isAllowed      Boolean  @map("is_allowed")
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  systemModule   SystemModule @relation(fields: [systemModuleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, systemModuleId, action])
+  @@map("user_permission_overrides")
+}
+
+model LeaveBalance {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String?  @map("tenant_id") @db.Uuid
+  employeeId    String?  @map("employee_id") @db.Uuid
+  leaveType     String   @map("leave_type") @db.VarChar(50)
+  allocatedDays Decimal? @default(0.00) @map("allocated_days") @db.Decimal(5, 2)
+  usedDays      Decimal? @default(0.00) @map("used_days") @db.Decimal(5, 2)
+  year          Int
+
+  tenant        Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee      Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, leaveType, year])
+  @@map("leave_balances")
+}
+
+model EmployeeDocument {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String?   @map("tenant_id") @db.Uuid
+  employeeId   String?   @map("employee_id") @db.Uuid
+  documentType String    @map("document_type") @db.VarChar(100)
+  s3FilePath   String    @map("s3_file_path") @db.VarChar(255)
+  uploadedBy   String?   @map("uploaded_by") @db.Uuid
+  uploadedAt   DateTime? @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+
+  tenant       Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee     Employee? @relation("EmployeeDocs", fields: [employeeId], references: [id], onDelete: Cascade)
+  uploader     Employee? @relation("UploadedBy", fields: [uploadedBy], references: [id])
+
+  @@map("employee_documents")
+}
+
+model ConsentLog {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String?   @map("tenant_id") @db.Uuid
+  employeeId          String?   @map("employee_id") @db.Uuid
+  policyVersion       String    @map("policy_version") @db.VarChar(50)
+  consentPi           Boolean?  @default(false) @map("consent_pi")
+  consentSpi          Boolean?  @default(false) @map("consent_spi")
+  granularPermissions Json?     @default("{}") @map("granular_permissions")
+  ipAddress           String?   @map("ip_address") @db.VarChar(45)
+  consentedAt         DateTime? @default(now()) @map("consented_at") @db.Timestamptz(6)
+
+  tenant              Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee            Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("consent_logs")
+}
+
+model AuditLog {
+  logId      String    @id @default(dbgenerated("gen_random_uuid()")) @map("log_id") @db.Uuid
+  tenantId   String?   @map("tenant_id") @db.Uuid
+  tableName  String    @map("table_name") @db.VarChar(100)
+  recordId   String    @map("record_id") @db.VarChar(255)
+  actionType String    @map("action_type") @db.VarChar(20)
+  oldData    Json?     @map("old_data")
+  newData    Json?     @map("new_data")
+  actorId    String?   @map("actor_id") @db.Uuid
+  createdAt  DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant     Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("audit_logs")
+}
