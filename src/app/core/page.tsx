@@ -1499,7 +1499,7 @@ function CoreSetupContent() {
                         <Label htmlFor="dept-branch-selector" className="text-xs text-slate-605 font-bold">Select Corporate Entity / Branch</Label>
                         <Select
                           value={selectedDeptBranchId || 'all'}
-                          onValueChange={(val) => setSelectedDeptBranchId(val === 'all' ? '' : val)}
+                          onValueChange={(val) => setSelectedDeptBranchId(val === 'all' ? '' : (val ?? ''))}
                         >
                           <SelectTrigger id="dept-branch-selector" className="bg-white border-slate-200 text-xs h-8 text-slate-900">
                             <SelectValue placeholder="All Entities">
@@ -2660,7 +2660,7 @@ function CoreSetupContent() {
                 <Label htmlFor="branch-parent" className="text-xs text-slate-700 font-semibold">Parent Entity / Company</Label>
                 <Select
                   value={branchForm.parentId || 'none'}
-                  onValueChange={(val) => setBranchForm({ ...branchForm, parentId: val === 'none' ? '' : val })}
+                  onValueChange={(val) => setBranchForm({ ...branchForm, parentId: val === 'none' ? '' : (val ?? '') })}
                 >
 
                   <SelectTrigger id="branch-parent" className="bg-slate-50 border-slate-200 text-xs h-8 text-slate-900">
