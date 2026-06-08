@@ -433,9 +433,10 @@ function CoreSetupContent() {
     fetch('/api/core/branches')
       .then(res => res.json())
       .then(data => {
-        setBranches(data);
-        if (data && data.length > 0) {
-          setSelectedDeptBranchId(data[0].id);
+        const arr = Array.isArray(data) ? data : [];
+        setBranches(arr);
+        if (arr.length > 0) {
+          setSelectedDeptBranchId(arr[0].id);
         }
       })
       .catch(err => console.error('Error fetching branches:', err));
@@ -443,17 +444,18 @@ function CoreSetupContent() {
     // Departments
     fetch('/api/core/departments')
       .then(res => res.json())
-      .then(data => setDepartments(data))
+      .then(data => setDepartments(Array.isArray(data) ? data : []))
       .catch(err => console.error('Error fetching departments:', err));
 
     // Employees list (for dropdowns)
     fetch('/api/core/employees')
       .then(res => res.json())
       .then(data => {
-        setEmployees(data);
-        if (data && data.length > 0) {
-          setWfEmployeeId(data[0].id);
-          setWfManagerId(data[0].id);
+        const arr = Array.isArray(data) ? data : [];
+        setEmployees(arr);
+        if (arr.length > 0) {
+          setWfEmployeeId(arr[0].id);
+          setWfManagerId(arr[0].id);
         }
       })
       .catch(err => console.error('Error fetching employees:', err));
@@ -461,22 +463,22 @@ function CoreSetupContent() {
     // Audit Logs
     fetch('/api/core/audit-logs')
       .then(res => res.json())
-      .then(data => setAuditLogs(data))
+      .then(data => setAuditLogs(Array.isArray(data) ? data : []))
       .catch(err => console.error('Error fetching audit logs:', err));
 
     // Consent Logs
     fetch('/api/core/consent-logs')
       .then(res => res.json())
-      .then(data => setConsentLogs(data))
+      .then(data => setConsentLogs(Array.isArray(data) ? data : []))
       .catch(err => console.error('Error fetching consent logs:', err));
 
     // Workflows
     fetch('/api/core/workflows')
       .then(res => res.json())
       .then(data => {
-        if (data.active) {
-          setActiveWorkflows(data.active);
-          setWorkflowHistory(data.history);
+        if (data && data.active) {
+          setActiveWorkflows(Array.isArray(data.active) ? data.active : []);
+          setWorkflowHistory(Array.isArray(data.history) ? data.history : []);
         }
       })
       .catch(err => console.error('Error fetching workflows:', err));
@@ -484,16 +486,17 @@ function CoreSetupContent() {
     // Users
     fetch('/api/core/users')
       .then(res => res.json())
-      .then(data => setUsers(data))
+      .then(data => setUsers(Array.isArray(data) ? data : []))
       .catch(err => console.error('Error fetching users:', err));
 
     // Roles
     fetch('/api/core/roles')
       .then(res => res.json())
       .then(data => {
-        setRoles(data);
-        if (data.length > 0) {
-          setSelectedRoleId(data[0].id);
+        const arr = Array.isArray(data) ? data : [];
+        setRoles(arr);
+        if (arr.length > 0) {
+          setSelectedRoleId(arr[0].id);
         }
       })
       .catch(err => console.error('Error fetching roles:', err));
@@ -502,9 +505,10 @@ function CoreSetupContent() {
     fetch('/api/core/modules')
       .then(res => res.json())
       .then(data => {
-        setSystemModules(data);
-        if (data.length > 0) {
-          setOverrideModule(data[0].code);
+        const arr = Array.isArray(data) ? data : [];
+        setSystemModules(arr);
+        if (arr.length > 0) {
+          setOverrideModule(arr[0].code);
         }
       })
       .catch(err => console.error('Error fetching modules:', err));
@@ -514,7 +518,7 @@ function CoreSetupContent() {
   useEffect(() => {
     fetch(`/api/system/archives?retentionYears=${logRetentionYears}`)
       .then(res => res.json())
-      .then(data => setArchiveFiles(data))
+      .then(data => setArchiveFiles(Array.isArray(data) ? data : []))
       .catch(err => console.error('Error fetching archives:', err));
   }, [logRetentionYears]);
 
