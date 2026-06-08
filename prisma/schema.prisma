@@ -33,6 +33,7 @@ model Tenant {
   people         Person[]
   users          User[]
   roles          Role[]
+  tenantModules  TenantModule[]
 
   @@map("tenants")
 }
@@ -78,11 +79,15 @@ model Department {
   branchId    String?    @map("branch_id") @db.Uuid
   name        String     @db.VarChar(150)
   managerId   String?    @map("manager_id") @db.Uuid
+  parentId    String?    @map("parent_id") @db.Uuid
+  type        String?    @default("DEPARTMENT") @db.VarChar(50)
 
   tenant      Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch      Branch?    @relation(fields: [branchId], references: [id], onDelete: SetNull)
   manager     Employee?  @relation("DeptManager", fields: [managerId], references: [id], onDelete: SetNull)
   employees   Employee[] @relation("EmpDept")
+  parent      Department? @relation("DeptHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Department[] @relation("DeptHierarchy")
 
   @@map("departments")
 }
@@ -141,12 +146,15 @@ model User {
   passwordHash String?    @map("password_hash") @db.VarChar(255)
   isActive     Boolean    @default(true) @map("is_active")
   roleId       String?    @map("role_id") @db.Uuid
+  clearanceLevel Int        @default(1) @map("clearance_level")
+  departmentId   String?    @map("department_id") @db.Uuid
   createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   
   person       Person     @relation(fields: [personId], references: [id], onDelete: Cascade)
   tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   role         Role?      @relation(fields: [roleId], references: [id], onDelete: SetNull)
   userOverrides UserPermissionOverride[]
+  roleAssignments UserRoleAssignment[]
 
   @@map("users")
 }
@@ -162,6 +170,7 @@ model Role {
   users       User[]
   permissions Permission[]
   rolePermissions RoleModulePermission[]
+  roleAssignments UserRoleAssignment[]
 
   @@map("roles")
 }
@@ -289,4 +298,35 @@ model AuditLog {
   tenant     Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("audit_logs")
+}
+
+model TenantModule {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  moduleCode  String    @map("module_code") @db.VarChar(100)
+  isActive    Boolean   @default(true) @map("is_active")
+  maxSeats    Int?      @map("max_seats")
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz(6)
+  activatedAt DateTime? @default(now()) @map("activated_at") @db.Timestamptz(6)
+
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, moduleCode])
+  @@map("tenant_modules")
+}
+
+model UserRoleAssignment {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String       @map("user_id") @db.Uuid
+  roleId           String       @map("role_id") @db.Uuid
+  scopeType        String       @default("GLOBAL") @map("scope_type") @db.VarChar(50)
+  scopeId          String?      @map("scope_id") @db.Uuid
+  validFrom        DateTime     @default(now()) @map("valid_from") @db.Timestamptz(6)
+  validUntil       DateTime?    @map("valid_until") @db.Timestamptz(6)
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role             Role         @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@map("user_role_assignments")
 }

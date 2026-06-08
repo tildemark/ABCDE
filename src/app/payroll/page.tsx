@@ -21,6 +21,8 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 
 interface Employee {
   id: string;
@@ -65,6 +67,16 @@ function calculateStatutoryDeductions(grossPay: number) {
 }
 
 export default function PayrollDashboard() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-slate-500 font-semibold">Loading Payroll...</div>}>
+      <PayrollDashboardContent />
+    </Suspense>
+  );
+}
+
+function PayrollDashboardContent() {
+  const searchParams = useSearchParams();
+  const currentUserId = searchParams.get('userId') || 'usr-super-admin';
   const [activeModules, setActiveModules] = useState<string[]>([]);
   const [employees, setEmployees] = useState<Employee[]>(INITIAL_EMPLOYEES);
   
@@ -84,6 +96,13 @@ export default function PayrollDashboard() {
         }
       })
       .catch(err => console.error("Failed to load license details", err));
+
+    fetch('/api/core/employees')
+      .then(res => res.json())
+      .then(data => {
+        setEmployees(data);
+      })
+      .catch(err => console.error("Failed to load employees from API", err));
   }, []);
 
   const isPayrollLicensed = activeModules.includes('PAYROLL');
@@ -93,7 +112,7 @@ export default function PayrollDashboard() {
     setIsUploading(true);
     setTimeout(() => {
       setEmployees(prev => prev.map(emp => {
-        return { ...emp, hoursWorked: emp.hoursWorked + 16 };
+        return { ...emp, hoursWorked: (emp.hoursWorked || 80) + 16 };
       }));
       setIsUploading(false);
       setCsvFile('');
@@ -105,10 +124,10 @@ export default function PayrollDashboard() {
       {/* Top Header Bar */}
       <header className="sticky top-0 z-40 flex items-center justify-between bg-white border-b border-slate-200 px-6 py-2.5 shadow-xs">
         <div className="flex items-center gap-2">
-          <Link href="/" className="flex items-center justify-center w-7 h-7 rounded bg-indigo-50 text-indigo-650 hover:bg-indigo-100 transition-colors">
+          <Link href="/" className="flex items-center justify-center w-7 h-7 rounded bg-indigo-555/5 text-indigo-650 hover:bg-indigo-100 transition-colors">
             <CircleDollarSign className="w-4 h-4" />
           </Link>
-          <div className="flex items-center gap-1.5 text-xs text-slate-550 font-semibold">
+          <div className="flex items-center gap-1.5 text-xs text-slate-505 font-semibold">
             <Link href="/" className="hover:text-slate-800">ABCD ERP System</Link>
             <span className="text-slate-350">/</span>
             <span className="cursor-pointer hover:text-slate-800" onClick={() => setSelectedPayslipEmp(null)}>Payroll</span>
@@ -121,14 +140,26 @@ export default function PayrollDashboard() {
           </div>
         </div>
 
-        {/* Navigation Links */}
+        {/* Account widget / Tester Hat Selector */}
         <div className="flex items-center gap-6">
-          <nav className="flex items-center gap-4 text-xs font-semibold text-slate-500">
-            <Link href="/core" className="hover:text-slate-800">Core Setup</Link>
-            <Link href="/hris" className="hover:text-slate-800">HRIS</Link>
-            <Link href="/timekeeping" className="hover:text-slate-800">Timekeeping</Link>
-            <Link href="/payroll" className="text-indigo-600">Payroll</Link>
-          </nav>
+          <div className="flex items-center gap-2 bg-slate-50/80 border border-slate-200/80 px-2.5 py-1 rounded-lg">
+            <span className="text-[10px] font-bold text-slate-405 uppercase tracking-wider">Active Tester Hat:</span>
+            <select
+              value={currentUserId}
+              onChange={(e) => {
+                const params = new URLSearchParams(window.location.search);
+                params.set('userId', e.target.value);
+                window.location.search = params.toString();
+              }}
+              className="bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-700 font-bold focus:outline-none cursor-pointer"
+            >
+              <option value="usr-ceo">CEO Boss (Rank 10 / STANDARD)</option>
+              <option value="usr-super-admin">IT Admin (Rank 8 / SUPER_ADMIN)</option>
+              <option value="usr-hr-mgr">HR Manager (Rank 6 / ADMIN)</option>
+              <option value="usr-hr-spec">HR Specialist (Rank 3 / STANDARD)</option>
+              <option value="usr-auditor">Auditor (Rank 4 / STANDARD + Bypass)</option>
+            </select>
+          </div>
           
           <div className="w-8 h-8 rounded-full overflow-hidden border border-slate-200">
             <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=64&h=64&q=80" alt="Avatar" className="w-full h-full object-cover" />
@@ -205,8 +236,15 @@ export default function PayrollDashboard() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {employees.map((emp) => {
-                        const gross = (emp.dailyRate / 8) * emp.hoursWorked;
+                      {employees.map((emp: any) => {
+                        const hasCompensation = emp.compensation !== undefined && emp.compensation !== null;
+                        const isRestricted = hasCompensation && emp.compensation.basicPay === null;
+                        
+                        const dailyRate = hasCompensation && emp.compensation.basicPay !== null 
+                          ? emp.compensation.basicPay 
+                          : (emp.dailyRate || 1500);
+                        const hoursWorked = emp.hoursWorked || 80;
+                        const gross = (dailyRate / 8) * hoursWorked;
                         const deductions = calculateStatutoryDeductions(gross);
                         const totalDeductions = deductions.sss + deductions.philhealth + deductions.pagibig + deductions.tax;
                         const net = gross - totalDeductions;
@@ -218,15 +256,47 @@ export default function PayrollDashboard() {
                               <p className="font-semibold text-slate-800">{emp.name}</p>
                               <p className="text-[10px] text-slate-400">{emp.position}</p>
                             </TableCell>
-                            <TableCell className="text-slate-600 font-mono text-xs py-3">₱{Math.round(emp.dailyRate / 8).toLocaleString()}/hr</TableCell>
-                            <TableCell className="text-slate-700 font-mono text-xs py-3">{emp.hoursWorked} hrs</TableCell>
-                            <TableCell className="text-slate-700 font-mono text-xs py-3">₱{Math.round(gross).toLocaleString()}</TableCell>
-                            <TableCell className="text-rose-650 font-mono text-xs py-3">-₱{Math.round(totalDeductions).toLocaleString()}</TableCell>
-                            <TableCell className="text-emerald-600 font-bold font-mono text-xs py-3">₱{Math.round(net).toLocaleString()}</TableCell>
+                            <TableCell className="text-slate-600 font-mono text-xs py-3">
+                              {isRestricted ? (
+                                <div className="flex items-center gap-1 text-amber-600 font-bold bg-amber-50 px-1.5 py-0.5 rounded text-[10px] w-fit">
+                                  <Lock className="w-3 h-3" /> Restricted
+                                </div>
+                              ) : (
+                                `₱${Math.round(dailyRate / 8).toLocaleString()}/hr`
+                              )}
+                            </TableCell>
+                            <TableCell className="text-slate-700 font-mono text-xs py-3">{hoursWorked} hrs</TableCell>
+                            <TableCell className="text-slate-700 font-mono text-xs py-3">
+                              {isRestricted ? (
+                                <div className="flex items-center gap-1 text-amber-600 font-bold bg-amber-50 px-1.5 py-0.5 rounded text-[10px] w-fit">
+                                  <Lock className="w-3 h-3" /> Restricted
+                                </div>
+                              ) : (
+                                `₱${Math.round(gross).toLocaleString()}`
+                              )}
+                            </TableCell>
+                            <TableCell className="text-rose-650 font-mono text-xs py-3">
+                              {isRestricted ? (
+                                <div className="flex items-center gap-1 text-amber-600 font-bold bg-amber-50 px-1.5 py-0.5 rounded text-[10px] w-fit">
+                                  <Lock className="w-3 h-3" /> Restricted
+                                </div>
+                              ) : (
+                                `-₱${Math.round(totalDeductions).toLocaleString()}`
+                              )}
+                            </TableCell>
+                            <TableCell className="text-emerald-600 font-bold font-mono text-xs py-3">
+                              {isRestricted ? (
+                                <div className="flex items-center gap-1.5 text-amber-700 bg-amber-50 border border-amber-200/30 px-2 py-0.5 rounded font-bold text-[10px] w-fit">
+                                  <Lock className="w-3.5 h-3.5" /> Restricted Record
+                                </div>
+                              ) : (
+                                `₱${Math.round(net).toLocaleString()}`
+                              )}
+                            </TableCell>
                             <TableCell className="text-right pr-6 py-3">
                               <Button 
                                 onClick={() => setSelectedPayslipEmp(emp)}
-                                className="bg-indigo-50 hover:bg-indigo-600 border border-indigo-250 text-indigo-650 hover:text-white text-[11px] px-3.5 py-1.5 rounded-lg transition-all cursor-pointer font-semibold"
+                                className="bg-indigo-50 hover:bg-indigo-650 border border-indigo-250 text-indigo-650 hover:text-white text-[11px] px-3.5 py-1.5 rounded-lg transition-all cursor-pointer font-semibold"
                               >
                                 Payslip
                               </Button>
@@ -336,7 +406,31 @@ export default function PayrollDashboard() {
             </DialogDescription>
           </DialogHeader>
           {selectedPayslipEmp && (() => {
-            const gross = (selectedPayslipEmp.dailyRate / 8) * selectedPayslipEmp.hoursWorked;
+            const emp: any = selectedPayslipEmp;
+            const hasCompensation = emp.compensation !== undefined && emp.compensation !== null;
+            const isRestricted = hasCompensation && emp.compensation.basicPay === null;
+
+            if (isRestricted) {
+              return (
+                <div className="p-8 text-center space-y-4">
+                  <div className="w-12 h-12 bg-amber-50 border border-amber-205 rounded-full flex items-center justify-center text-amber-600 mx-auto">
+                    <Lock className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-sm">Security Restriction Active</h4>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Your clearance level is insufficient to view itemized financial fields for this record.
+                    </p>
+                  </div>
+                </div>
+              );
+            }
+
+            const dailyRate = hasCompensation && emp.compensation.basicPay !== null 
+              ? emp.compensation.basicPay 
+              : (emp.dailyRate || 1500);
+            const hoursWorked = emp.hoursWorked || 80;
+            const gross = (dailyRate / 8) * hoursWorked;
             const deductions = calculateStatutoryDeductions(gross);
             const totalDeductions = deductions.sss + deductions.philhealth + deductions.pagibig + deductions.tax;
             const net = gross - totalDeductions;
@@ -346,19 +440,19 @@ export default function PayrollDashboard() {
                 <div className="grid grid-cols-2 gap-4 p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs">
                   <div>
                     <span className="text-slate-400 block font-semibold">Name</span>
-                    <strong className="text-slate-800 block mt-0.5">{selectedPayslipEmp.name}</strong>
+                    <strong className="text-slate-800 block mt-0.5">{emp.name}</strong>
                   </div>
                   <div>
                     <span className="text-slate-400 block font-semibold">Employee ID</span>
-                    <strong className="text-indigo-650 font-mono block mt-0.5">{selectedPayslipEmp.id}</strong>
+                    <strong className="text-indigo-650 font-mono block mt-0.5">{emp.id}</strong>
                   </div>
                   <div>
                     <span className="text-slate-400 block font-semibold">Daily Rate</span>
-                    <strong className="text-slate-800 block mt-0.5">₱{selectedPayslipEmp.dailyRate.toLocaleString()}</strong>
+                    <strong className="text-slate-800 block mt-0.5">₱{dailyRate.toLocaleString()}</strong>
                   </div>
                   <div>
                     <span className="text-slate-400 block font-semibold">Total Hours</span>
-                    <strong className="text-slate-800 block mt-0.5">{selectedPayslipEmp.hoursWorked} hours</strong>
+                    <strong className="text-slate-800 block mt-0.5">{hoursWorked} hours</strong>
                   </div>
                 </div>
 

@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
 let mockDepartments = [
-  { id: 'd1-uuid', name: 'Engineering', branchId: 'b1-uuid', branchName: 'Manila Head Office', managerId: 'EMP-001', managerName: 'Adam Roy', staffCount: 2 },
-  { id: 'd2-uuid', name: 'Human Resources', branchId: 'b1-uuid', branchName: 'Manila Head Office', managerId: 'EMP-002', managerName: 'Maria Santos', staffCount: 1 },
-  { id: 'd3-uuid', name: 'Marketing', branchId: 'b2-uuid', branchName: 'Cebu Branch', managerId: 'EMP-004', managerName: 'Sarah Jenkins', staffCount: 1 },
-  { id: 'd4-uuid', name: 'Finance', branchId: 'b1-uuid', branchName: 'Manila Head Office', managerId: 'EMP-005', managerName: 'Ronald Richards', staffCount: 1 },
+  { id: 'div-1-uuid', name: 'Technology Division', branchId: 'b1-uuid', branchName: 'Manila Head Office', managerId: 'EMP-001', managerName: 'Adam Roy', staffCount: 4, parentId: null, type: 'DIVISION' },
+  { id: 'd1-uuid', name: 'Engineering', branchId: 'b1-uuid', branchName: 'Manila Head Office', managerId: 'EMP-001', managerName: 'Adam Roy', staffCount: 2, parentId: 'div-1-uuid', type: 'DEPARTMENT' },
+  { id: 'sec-1-uuid', name: 'Frontend Section', branchId: 'b1-uuid', branchName: 'Manila Head Office', managerId: 'EMP-001', managerName: 'Adam Roy', staffCount: 1, parentId: 'd1-uuid', type: 'SECTION' },
+  { id: 'sub-1-uuid', name: 'Mobile App Team', branchId: 'b1-uuid', branchName: 'Manila Head Office', managerId: 'EMP-002', managerName: 'Maria Santos', staffCount: 1, parentId: 'sec-1-uuid', type: 'SUBSECTION' },
+  { id: 'd2-uuid', name: 'Human Resources', branchId: 'b1-uuid', branchName: 'Manila Head Office', managerId: 'EMP-002', managerName: 'Maria Santos', staffCount: 1, parentId: null, type: 'DEPARTMENT' },
+  { id: 'd3-uuid', name: 'Marketing', branchId: 'b2-uuid', branchName: 'Cebu Branch', managerId: 'EMP-004', managerName: 'Sarah Jenkins', staffCount: 1, parentId: null, type: 'DEPARTMENT' },
+  { id: 'd4-uuid', name: 'Finance', branchId: 'b1-uuid', branchName: 'Manila Head Office', managerId: 'EMP-005', managerName: 'Ronald Richards', staffCount: 1, parentId: null, type: 'DEPARTMENT' },
 ];
 
 export async function GET() {
@@ -28,6 +31,8 @@ export async function GET() {
         managerId: d.managerId,
         managerName: d.manager?.person ? `${d.manager.person.firstName} ${d.manager.person.lastName}` : 'Unassigned',
         staffCount: d.employees.length,
+        parentId: d.parentId || null,
+        type: d.type || 'DEPARTMENT',
       })));
     }
     return NextResponse.json(mockDepartments);
@@ -40,7 +45,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, branchId, managerId } = body;
+    const { name, branchId, managerId, parentId, type } = body;
 
     if (!name) {
       return NextResponse.json({ error: 'Department name is required' }, { status: 400 });
@@ -52,6 +57,8 @@ export async function POST(request: NextRequest) {
           name,
           branchId: branchId || null,
           managerId: managerId || null,
+          parentId: parentId || null,
+          type: type || 'DEPARTMENT',
         },
         include: {
           branch: { select: { name: true } },
@@ -66,6 +73,8 @@ export async function POST(request: NextRequest) {
         managerId: newDept.managerId,
         managerName: newDept.manager?.person ? `${newDept.manager.person.firstName} ${newDept.manager.person.lastName}` : 'Unassigned',
         staffCount: 0,
+        parentId: newDept.parentId || null,
+        type: newDept.type || 'DEPARTMENT',
       });
     } catch (dbError) {
       console.warn('Prisma insert failed. Inserting into mock departments.');
@@ -77,6 +86,8 @@ export async function POST(request: NextRequest) {
         managerId: managerId || 'EMP-001',
         managerName: managerId === 'EMP-002' ? 'Maria Santos' : 'Adam Roy',
         staffCount: 0,
+        parentId: parentId || null,
+        type: type || 'DEPARTMENT',
       };
       mockDepartments.push(newMock);
       return NextResponse.json(newMock);
@@ -89,7 +100,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, name, branchId, managerId } = body;
+    const { id, name, branchId, managerId, parentId, type } = body;
 
     if (!id || !name) {
       return NextResponse.json({ error: 'Department ID and name are required' }, { status: 400 });
@@ -98,7 +109,13 @@ export async function PUT(request: NextRequest) {
     try {
       const updated = await prisma.department.update({
         where: { id },
-        data: { name, branchId: branchId || null, managerId: managerId || null },
+        data: { 
+          name, 
+          branchId: branchId || null, 
+          managerId: managerId || null,
+          parentId: parentId || null,
+          type: type || 'DEPARTMENT'
+        },
         include: {
           branch: { select: { name: true } },
           manager: { select: { person: { select: { firstName: true, lastName: true } } } },
@@ -113,6 +130,8 @@ export async function PUT(request: NextRequest) {
         managerId: updated.managerId,
         managerName: updated.manager?.person ? `${updated.manager.person.firstName} ${updated.manager.person.lastName}` : 'Unassigned',
         staffCount: updated.employees.length,
+        parentId: updated.parentId || null,
+        type: updated.type || 'DEPARTMENT',
       });
     } catch (dbError) {
       console.warn('Prisma update failed. Updating mock department.');
@@ -129,7 +148,7 @@ export async function PUT(request: NextRequest) {
           else if (branchId === 'b2-uuid') branchName = 'Cebu Branch';
           else if (branchId === 'b3-uuid') branchName = 'Davao Office';
 
-          return { ...d, name, branchId, branchName, managerId, managerName };
+          return { ...d, name, branchId, branchName, managerId, managerName, parentId: parentId || null, type: type || 'DEPARTMENT' };
         }
         return d;
       });
@@ -157,6 +176,9 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: true });
     } catch (dbError) {
       console.warn('Prisma delete failed. Deleting from mock departments.');
+      
+      // Also orphan child units in mock data to prevent issues
+      mockDepartments = mockDepartments.map(d => d.parentId === id ? { ...d, parentId: null } : d);
       mockDepartments = mockDepartments.filter(d => d.id !== id);
       return NextResponse.json({ success: true });
     }

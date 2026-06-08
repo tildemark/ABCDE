@@ -1,10 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyLicense } from '@/utils/verifyLicense';
+import { getSeatConsumption } from '@/lib/permissions';
+import { prisma } from '@/lib/db';
 import fs from 'fs';
 import path from 'path';
 
 const LICENSE_FILE_PATH = path.join(process.cwd(), 'license.txt');
+const PUBLIC_KEY_FILE_PATH = path.join(process.cwd(), 'license_public_key.pub');
 let memoryLicenseKey: string | null = null;
+
+function getPublicKey(): string {
+  if (fs.existsSync(PUBLIC_KEY_FILE_PATH)) {
+    try {
+      return fs.readFileSync(PUBLIC_KEY_FILE_PATH, 'utf8').trim();
+    } catch (e) {
+      console.error('Failed to read license_public_key.pub:', e);
+    }
+  }
+  return '';
+}
 
 function getLicenseKey(): string {
   if (memoryLicenseKey) return memoryLicenseKey;
@@ -29,6 +43,8 @@ function parseLicensePayload(licenseKey: string) {
     return {
       expires: payload.expires,
       tenantId: payload.tenant_id,
+      maxSeats: payload.max_seats || null,
+      seatsPerModule: payload.seats_per_module || null,
     };
   } catch (e) {
     return null;
@@ -37,7 +53,7 @@ function parseLicensePayload(licenseKey: string) {
 
 export async function GET() {
   try {
-    const rawPublicKey = process.env.NEXT_PUBLIC_LICENSE_PUBLIC_KEY;
+    const rawPublicKey = getPublicKey();
     const licenseKey = getLicenseKey();
 
     if (!rawPublicKey) {
@@ -47,12 +63,29 @@ export async function GET() {
     const publicKey = rawPublicKey.replace(/\\n/g, '\n');
     const parsed = parseLicensePayload(licenseKey);
 
+    let tenantId = 't1-uuid';
+    try {
+      if (prisma) {
+        const tenant = await prisma.tenant.findFirst();
+        if (tenant) {
+          tenantId = tenant.id;
+        }
+      }
+    } catch (e: any) {
+      console.warn('Prisma tenant query failed, using default tenant ID:', e.message);
+    }
+    const seatInfo = await getSeatConsumption(tenantId);
+
     try {
       const activeModules = verifyLicense(licenseKey, publicKey);
       return NextResponse.json({
         activeModules,
         expires: parsed?.expires || 'Unknown',
         tenantId: parsed?.tenantId || 'Unknown',
+        maxSeats: parsed?.maxSeats || null,
+        seatsPerModule: parsed?.seatsPerModule || null,
+        currentActiveUsers: seatInfo.currentActiveUsers,
+        currentSeatsPerModule: seatInfo.currentSeatsPerModule,
         licenseKey,
         status: 'Valid',
       });
@@ -61,6 +94,10 @@ export async function GET() {
         activeModules: [],
         expires: parsed?.expires || 'Unknown',
         tenantId: parsed?.tenantId || 'Unknown',
+        maxSeats: null,
+        seatsPerModule: null,
+        currentActiveUsers: seatInfo.currentActiveUsers,
+        currentSeatsPerModule: seatInfo.currentSeatsPerModule,
         licenseKey,
         status: 'Invalid / Expired',
         error: err.message,
@@ -80,7 +117,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'License key is required' }, { status: 400 });
     }
 
-    const rawPublicKey = process.env.NEXT_PUBLIC_LICENSE_PUBLIC_KEY;
+    const rawPublicKey = getPublicKey();
     if (!rawPublicKey) {
       return NextResponse.json({ error: 'Public verification key missing' }, { status: 500 });
     }
@@ -101,11 +138,28 @@ export async function POST(request: NextRequest) {
     fs.writeFileSync(LICENSE_FILE_PATH, licenseKey, 'utf8');
     memoryLicenseKey = licenseKey;
 
+    let tenantId = 't1-uuid';
+    try {
+      if (prisma) {
+        const tenant = await prisma.tenant.findFirst();
+        if (tenant) {
+          tenantId = tenant.id;
+        }
+      }
+    } catch (e: any) {
+      console.warn('Prisma tenant query failed in POST, using default tenant ID:', e.message);
+    }
+    const seatInfo = await getSeatConsumption(tenantId);
+
     return NextResponse.json({
       success: true,
       activeModules,
       expires: parsed?.expires || 'Unknown',
       tenantId: parsed?.tenantId || 'Unknown',
+      maxSeats: parsed?.maxSeats || null,
+      seatsPerModule: parsed?.seatsPerModule || null,
+      currentActiveUsers: seatInfo.currentActiveUsers,
+      currentSeatsPerModule: seatInfo.currentSeatsPerModule,
       status: 'Valid',
     });
   } catch (error: any) {

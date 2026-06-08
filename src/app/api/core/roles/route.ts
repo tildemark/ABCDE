@@ -1,58 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
-// Multi-verb defaults per role
-let mockRoles = [
-  {
-    id: 'r1-uuid',
-    name: 'Super Admin',
-    description: 'Complete system access to all configurations and data',
-    permissions: {
-      core_settings: { read: true, create: true, write: true, delete: true, print: true, report: true, import: true, export: true, share: true, email: true },
-      hris_employees: { read: true, create: true, write: true, delete: true, print: true, report: true, import: true, export: true, share: true, email: true },
-      hris_departments: { read: true, create: true, write: true, delete: true, print: true, report: true, import: true, export: true, share: true, email: true },
-      time_records: { read: true, create: true, write: true, delete: true, print: true, report: true, import: true, export: true, share: true, email: true },
-      payroll_registers: { read: true, create: true, write: true, delete: true, print: true, report: true, import: true, export: true, share: true, email: true },
-      documents_portal: { read: true, create: true, write: true, delete: true, print: true, report: true, import: true, export: true, share: true, email: true }
+let mockRoles: any[] = [
+  { 
+    id: 'role-super-admin', 
+    name: 'Super Admin', 
+    complianceBypass: false,
+    permissions: { 
+      core_settings: { read: true, create: true, write: true, delete: true, print: true, report: true, import: true, export: true, share: true, email: true }, 
+      hris_employees: { read: true, create: true, write: true, delete: true, print: true, report: true, import: true, export: true, share: true, email: true }, 
+      hris_departments: { read: true, create: true, write: true, delete: true, print: true, report: true, import: true, export: true, share: true, email: true }, 
+      time_records: { read: true, create: true, write: true, delete: true, print: true, report: true, import: true, export: true, share: true, email: true }, 
+      payroll_registers: { read: true, create: true, write: true, delete: true, print: true, report: true, import: true, export: true, share: true, email: true }, 
+      documents_portal: { read: true, create: true, write: true, delete: true, print: true, report: true, import: true, export: true, share: true, email: true } 
     }
   },
-  {
-    id: 'r2-uuid',
-    name: 'HR Specialist',
-    description: 'Management of employee directories, departments, and consent logs',
-    permissions: {
-      core_settings: { read: true, create: false, write: false, delete: false, print: false, report: false, import: false, export: false, share: false, email: false },
-      hris_employees: { read: true, create: true, write: true, delete: false, print: true, report: true, import: true, export: true, share: true, email: true },
-      hris_departments: { read: true, create: true, write: true, delete: false, print: true, report: true, import: false, export: false, share: false, email: false },
-      time_records: { read: true, create: false, write: false, delete: false, print: true, report: true, import: false, export: false, share: false, email: false },
-      payroll_registers: { read: false, create: false, write: false, delete: false, print: false, report: false, import: false, export: false, share: false, email: false },
-      documents_portal: { read: true, create: true, write: true, delete: false, print: true, report: false, import: true, export: true, share: true, email: true }
+  { 
+    id: 'role-hr-mgr', 
+    name: 'HR Manager', 
+    complianceBypass: false,
+    permissions: { 
+      core_settings: { read: true, create: true, write: true, delete: true, print: true, report: true, import: true, export: true, share: true, email: true }, 
+      hris_employees: { read: true, create: true, write: true, delete: true, print: true, report: true, import: true, export: true, share: true, email: true }, 
+      hris_departments: { read: true, create: true, write: true, delete: true, print: true, report: true, import: true, export: true, share: true, email: true }, 
+      time_records: { read: true, create: true, write: true, delete: false, print: true, report: true, import: true, export: true, share: true, email: true }, 
+      payroll_registers: { read: true, create: true, write: true, delete: false, print: true, report: true, import: false, export: true, share: false, email: true }, 
+      documents_portal: { read: true, create: true, write: true, delete: true, print: true, report: true, import: true, export: true, share: true, email: true } 
     }
   },
-  {
-    id: 'r3-uuid',
-    name: 'Department Manager',
-    description: 'View assigned employees, approve timesheet logs and leaves',
-    permissions: {
-      core_settings: { read: false, create: false, write: false, delete: false, print: false, report: false, import: false, export: false, share: false, email: false },
-      hris_employees: { read: true, create: false, write: false, delete: false, print: false, report: true, import: false, export: false, share: false, email: false },
-      hris_departments: { read: true, create: false, write: false, delete: false, print: false, report: false, import: false, export: false, share: false, email: false },
-      time_records: { read: true, create: true, write: true, delete: false, print: true, report: true, import: false, export: false, share: false, email: false },
-      payroll_registers: { read: false, create: false, write: false, delete: false, print: false, report: false, import: false, export: false, share: false, email: false },
-      documents_portal: { read: true, create: false, write: false, delete: false, print: false, report: false, import: false, export: false, share: false, email: false }
+  { 
+    id: 'role-hr-spec', 
+    name: 'HR Specialist', 
+    complianceBypass: false,
+    permissions: { 
+      core_settings: { read: true, create: false, write: false, delete: false, print: false, report: false, import: false, export: false, share: false, email: false }, 
+      hris_employees: { read: true, create: true, write: true, delete: false, print: true, report: true, import: true, export: true, share: true, email: true }, 
+      hris_departments: { read: true, create: true, write: true, delete: false, print: true, report: true, import: false, export: false, share: false, email: false }, 
+      time_records: { read: true, create: false, write: false, delete: false, print: true, report: true, import: false, export: false, share: false, email: false }, 
+      payroll_registers: { read: false, create: false, write: false, delete: false, print: false, report: false, import: false, export: false, share: false, email: false }, 
+      documents_portal: { read: true, create: true, write: true, delete: false, print: true, report: false, import: true, export: true, share: true, email: true } 
     }
   },
-  {
-    id: 'r4-uuid',
-    name: 'External Auditor',
-    description: 'Read-only audit trail and data privacy registers',
-    permissions: {
-      core_settings: { read: true, create: false, write: false, delete: false, print: true, report: true, import: false, export: false, share: false, email: false },
-      hris_employees: { read: true, create: false, write: false, delete: false, print: true, report: true, import: false, export: false, share: false, email: false },
-      hris_departments: { read: true, create: false, write: false, delete: false, print: true, report: true, import: false, export: false, share: false, email: false },
-      time_records: { read: true, create: false, write: false, delete: false, print: true, report: true, import: false, export: false, share: false, email: false },
-      payroll_registers: { read: true, create: false, write: false, delete: false, print: true, report: true, import: false, export: false, share: false, email: false },
-      documents_portal: { read: true, create: false, write: false, delete: false, print: true, report: true, import: false, export: false, share: false, email: false }
+  { 
+    id: 'role-auditor', 
+    name: 'External Compliance Auditor', 
+    complianceBypass: true,
+    permissions: { 
+      core_settings: { read: true, create: false, write: false, delete: false, print: true, report: true, import: false, export: false, share: false, email: false }, 
+      hris_employees: { read: true, create: false, write: false, delete: false, print: true, report: true, import: false, export: false, share: false, email: false }, 
+      hris_departments: { read: true, create: false, write: false, delete: false, print: true, report: true, import: false, export: false, share: false, email: false }, 
+      time_records: { read: true, create: false, write: false, delete: false, print: true, report: true, import: false, export: false, share: false, email: false }, 
+      payroll_registers: { read: true, create: false, write: false, delete: false, print: true, report: true, import: false, export: false, share: false, email: false }, 
+      documents_portal: { read: true, create: false, write: false, delete: false, print: true, report: true, import: false, export: false, share: false, email: false } 
     }
   }
 ];
@@ -82,13 +81,13 @@ export async function GET() {
             import: p.canImport,
             export: p.canExport,
             share: p.canShare,
-            email: p.canEmail
+            email: p.canEmail,
           };
         });
         return {
           id: r.id,
           name: r.name,
-          description: r.description,
+          complianceBypass: false,  // field not in schema — default to false
           permissions: permMap
         };
       }));
@@ -103,64 +102,63 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, description, permissions } = body;
+    const { name, complianceBypass, permissions } = body;
 
     if (!name) {
       return NextResponse.json({ error: 'Role name is required' }, { status: 400 });
     }
 
     try {
+      // Get a tenantId from DB for the new role
+      const firstTenant = await prisma.tenant.findFirst({ select: { id: true } });
+      if (!firstTenant) throw new Error('No tenant found');
+
       const role = await prisma.role.create({
         data: {
+          tenantId: firstTenant.id,
           name,
-          description,
-          tenantId: 't1-uuid'
+          // complianceBypass not in schema — skipped
         }
       });
 
-      // Connect permissions if passed
+      // Seed rolePermissions from permissions map
       if (permissions) {
         for (const moduleCode of Object.keys(permissions)) {
           const mod = await prisma.systemModule.findUnique({ where: { code: moduleCode } });
           if (mod) {
             const val = permissions[moduleCode];
-            await prisma.roleModulePermission.create({
-              data: {
+            await prisma.roleModulePermission.upsert({
+              where: { roleId_systemModuleId: { roleId: role.id, systemModuleId: mod.id } },
+              create: {
                 roleId: role.id,
                 systemModuleId: mod.id,
-                canRead: !!val.read,
-                canCreate: !!val.create,
-                canWrite: !!val.write,
-                canDelete: !!val.delete,
-                canPrint: !!val.print,
-                canReport: !!val.report,
-                canImport: !!val.import,
-                canExport: !!val.export,
-                canShare: !!val.share,
-                canEmail: !!val.email
+                canRead: !!val.read, canCreate: !!val.create, canWrite: !!val.write,
+                canDelete: !!val.delete, canPrint: !!val.print, canReport: !!val.report,
+                canImport: !!val.import, canExport: !!val.export, canShare: !!val.share, canEmail: !!val.email,
+              },
+              update: {
+                canRead: !!val.read, canCreate: !!val.create, canWrite: !!val.write,
+                canDelete: !!val.delete, canPrint: !!val.print, canReport: !!val.report,
+                canImport: !!val.import, canExport: !!val.export, canShare: !!val.share, canEmail: !!val.email,
               }
             });
           }
         }
       }
 
-      // Re-query to return complete structured data
       return NextResponse.json({
         id: role.id,
         name: role.name,
-        description: role.description,
+        complianceBypass: false,
         permissions: permissions || {}
       });
     } catch (dbError) {
-      console.warn('Prisma role insert failed. Inserting into mock roles matrix.');
+      console.warn('Prisma role insert failed. Inserting into mock roles matrix.', dbError);
       const newMock = {
         id: `mock-role-${Date.now()}`,
         name,
-        description,
-        permissions: permissions || {
-          core_settings: { read: true, create: false, write: false, delete: false, print: false, report: false, import: false, export: false, share: false, email: false },
-          hris_employees: { read: true, create: false, write: false, delete: false, print: false, report: false, import: false, export: false, share: false, email: false }
-        }
+        complianceBypass: !!complianceBypass,
+        permissions: permissions || {}
       };
       mockRoles.push(newMock);
       return NextResponse.json(newMock);
@@ -173,55 +171,45 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, name, description, permissions } = body;
+    const { id, name, complianceBypass, permissions } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'Role ID is required' }, { status: 400 });
     }
 
     try {
+      const roleExists = await prisma.role.findUnique({ where: { id } });
+      if (!roleExists) {
+        throw new Error('Role not found in database');
+      }
+
       const updatedRole = await prisma.role.update({
         where: { id },
         data: {
           name: name || undefined,
-          description: description !== undefined ? description : undefined
+          // complianceBypass not in schema — skipped
         }
       });
 
+      // Update rolePermissions using correct schema model
       if (permissions) {
         for (const moduleCode of Object.keys(permissions)) {
           const mod = await prisma.systemModule.findUnique({ where: { code: moduleCode } });
           if (mod) {
             const val = permissions[moduleCode];
             await prisma.roleModulePermission.upsert({
-              where: {
-                roleId_systemModuleId: { roleId: id, systemModuleId: mod.id }
-              },
+              where: { roleId_systemModuleId: { roleId: id, systemModuleId: mod.id } },
               create: {
                 roleId: id,
                 systemModuleId: mod.id,
-                canRead: !!val.read,
-                canCreate: !!val.create,
-                canWrite: !!val.write,
-                canDelete: !!val.delete,
-                canPrint: !!val.print,
-                canReport: !!val.report,
-                canImport: !!val.import,
-                canExport: !!val.export,
-                canShare: !!val.share,
-                canEmail: !!val.email
+                canRead: !!val.read, canCreate: !!val.create, canWrite: !!val.write,
+                canDelete: !!val.delete, canPrint: !!val.print, canReport: !!val.report,
+                canImport: !!val.import, canExport: !!val.export, canShare: !!val.share, canEmail: !!val.email,
               },
               update: {
-                canRead: val.read !== undefined ? !!val.read : undefined,
-                canCreate: val.create !== undefined ? !!val.create : undefined,
-                canWrite: val.write !== undefined ? !!val.write : undefined,
-                canDelete: val.delete !== undefined ? !!val.delete : undefined,
-                canPrint: val.print !== undefined ? !!val.print : undefined,
-                canReport: val.report !== undefined ? !!val.report : undefined,
-                canImport: val.import !== undefined ? !!val.import : undefined,
-                canExport: val.export !== undefined ? !!val.export : undefined,
-                canShare: val.share !== undefined ? !!val.share : undefined,
-                canEmail: val.email !== undefined ? !!val.email : undefined
+                canRead: !!val.read, canCreate: !!val.create, canWrite: !!val.write,
+                canDelete: !!val.delete, canPrint: !!val.print, canReport: !!val.report,
+                canImport: !!val.import, canExport: !!val.export, canShare: !!val.share, canEmail: !!val.email,
               }
             });
           }
@@ -231,24 +219,23 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({
         id: updatedRole.id,
         name: updatedRole.name,
-        description: updatedRole.description,
+        complianceBypass: false,
         permissions: permissions || {}
       });
     } catch (dbError) {
-      console.warn('Prisma role update failed. Updating mock role matrix.');
+      console.warn('Prisma role update failed. Updating mock role matrix.', dbError);
       mockRoles = mockRoles.map(r => {
         if (r.id === id) {
-          // Merge permissions
           const mergedPerms: any = { ...r.permissions };
           if (permissions) {
             for (const key of Object.keys(permissions)) {
-              mergedPerms[key] = { ...(mergedPerms[key] || {}), ...(permissions as any)[key] };
+              mergedPerms[key] = { ...(mergedPerms[key] || {}), ...permissions[key] };
             }
           }
           return {
             ...r,
             name: name || r.name,
-            description: description !== undefined ? description : r.description,
+            complianceBypass: complianceBypass !== undefined ? !!complianceBypass : r.complianceBypass,
             permissions: mergedPerms
           };
         }
@@ -256,6 +243,28 @@ export async function PUT(request: NextRequest) {
       });
       const updatedMock = mockRoles.find(r => r.id === id);
       return NextResponse.json(updatedMock);
+    }
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ error: 'Role ID is required' }, { status: 400 });
+    }
+
+    try {
+      await prisma.role.delete({ where: { id } });
+      return NextResponse.json({ success: true });
+    } catch (dbError) {
+      console.warn('Prisma role delete failed. Deleting from mock roles matrix.');
+      mockRoles = mockRoles.filter(r => r.id !== id);
+      return NextResponse.json({ success: true });
     }
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 400 });

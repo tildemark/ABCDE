@@ -97,7 +97,9 @@ export async function PATCH(request: NextRequest) {
       birBranchCode,
       rdoCode,
       companyType,
-      parentTenantId
+      parentTenantId,
+      permissionInheritance,
+      crossCompanyAccess
     } = body;
 
     try {
@@ -116,6 +118,8 @@ export async function PATCH(request: NextRequest) {
             rdoCode,
             companyType,
             parentTenantId: parentTenantId || null,
+            permissionInheritance,
+            crossCompanyAccess,
           },
         });
         
@@ -136,6 +140,8 @@ export async function PATCH(request: NextRequest) {
             rdoCode,
             companyType,
             parentTenantId: parentTenantId || null,
+            permissionInheritance: permissionInheritance || 'STRICT',
+            crossCompanyAccess: crossCompanyAccess || 'RESTRICTED',
           },
         });
         return NextResponse.json({
@@ -163,7 +169,9 @@ export async function PATCH(request: NextRequest) {
         rdoCode: rdoCode ?? mockTenant.rdoCode,
         companyType: companyType ?? mockTenant.companyType,
         parentTenantId: parentTenantId ?? mockTenant.parentTenantId,
-      };
+        permissionInheritance: permissionInheritance ?? (mockTenant as any).permissionInheritance ?? 'STRICT',
+        crossCompanyAccess: crossCompanyAccess ?? (mockTenant as any).crossCompanyAccess ?? 'RESTRICTED',
+      } as any;
       // Keep mockTenants list updated as well
       mockTenants = mockTenants.map(t => t.id === mockTenant.id ? mockTenant : t);
       return NextResponse.json(mockTenant);

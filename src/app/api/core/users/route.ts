@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { getSeatConsumption } from '@/lib/permissions';
+
+// Mock role assignments for fallback
+let mockAssignments: any[] = [
+  { id: 'ra1-uuid', userId: 'u1-uuid', roleId: 'r1-uuid', roleName: 'Super Admin', roleLevel: 0, scopeType: 'GLOBAL', scopeId: null, scopeLabel: null, validFrom: '2024-01-01T00:00:00Z', validUntil: null },
+  { id: 'ra2-uuid', userId: 'u2-uuid', roleId: 'r2-uuid', roleName: 'HR Specialist', roleLevel: 4, scopeType: 'GLOBAL', scopeId: null, scopeLabel: null, validFrom: '2024-01-01T00:00:00Z', validUntil: null },
+  { id: 'ra3-uuid', userId: 'u3-uuid', roleId: 'r3-uuid', roleName: 'Department Manager', roleLevel: 3, scopeType: 'DEPARTMENT', scopeId: 'd1-uuid', scopeLabel: 'Engineering', validFrom: '2024-01-01T00:00:00Z', validUntil: null },
+];
 
 let mockUsers: any[] = [
-  { id: 'u1-uuid', personId: 'p1-uuid', name: 'Adam Roy', email: 'adam.roy@atomic-hr.com', isActive: true, roleId: 'r1-uuid', roleName: 'Super Admin', employeeCode: 'EMP-001', overrides: {} },
-  { id: 'u2-uuid', personId: 'p2-uuid', name: 'Maria Santos', email: 'maria.santos@atomic-hr.com', isActive: true, roleId: 'r2-uuid', roleName: 'HR Specialist', employeeCode: 'EMP-002', overrides: { hris_employees: { delete: true } } },
-  { id: 'u3-uuid', personId: 'p3-uuid', name: 'Sarah Jenkins', email: 'sarah.j@atomic-hr.com', isActive: false, roleId: 'r3-uuid', roleName: 'Department Manager', employeeCode: 'EMP-004', overrides: {} },
-  { id: 'u4-uuid', personId: 'p4-uuid', name: 'Jane Consultant', email: 'jane.consultant@external.com', isActive: true, roleId: 'r4-uuid', roleName: 'External Auditor', employeeCode: 'N/A (Contractor)', overrides: { hris_employees: { print: false } } }
+  { id: 'u1-uuid', personId: 'p1-uuid', name: 'Adam Roy', email: 'adam.roy@atomic-hr.com', isActive: true, roleId: 'r1-uuid', roleName: 'Super Admin', employeeCode: 'EMP-001', clearanceLevel: 10, departmentId: 'd1-uuid', overrides: {} },
+  { id: 'u2-uuid', personId: 'p2-uuid', name: 'Maria Santos', email: 'maria.santos@atomic-hr.com', isActive: true, roleId: 'r2-uuid', roleName: 'HR Specialist', employeeCode: 'EMP-002', clearanceLevel: 3, departmentId: 'd2-uuid', overrides: { hris_employees: { delete: true } } },
+  { id: 'u3-uuid', personId: 'p3-uuid', name: 'Sarah Jenkins', email: 'sarah.j@atomic-hr.com', isActive: false, roleId: 'r3-uuid', roleName: 'Department Manager', employeeCode: 'EMP-004', clearanceLevel: 5, departmentId: 'd1-uuid', overrides: {} },
+  { id: 'u4-uuid', personId: 'p4-uuid', name: 'Jane Consultant', email: 'jane.consultant@external.com', isActive: true, roleId: 'r4-uuid', roleName: 'External Auditor', employeeCode: 'N/A (Contractor)', clearanceLevel: 1, departmentId: null, overrides: { hris_employees: { print: false } } }
 ];
 
 export async function GET() {
@@ -22,6 +30,11 @@ export async function GET() {
         role: { select: { name: true } },
         userOverrides: {
           include: { systemModule: true }
+        },
+        roleAssignments: {
+          include: {
+            role: { select: { name: true, level: true } }
+          }
         }
       },
       orderBy: { loginEmail: 'asc' }
@@ -44,31 +57,68 @@ export async function GET() {
           isActive: u.isActive,
           roleId: u.roleId,
           roleName: u.role?.name || 'No Role Assigned',
+          clearanceLevel: u.clearanceLevel,
+          departmentId: u.departmentId,
           employeeCode: u.person.employee?.employeeCode || 'N/A',
-          overrides: overridesMap
+          overrides: overridesMap,
+          roleAssignments: u.roleAssignments.map((ra: any) => ({
+            id: ra.id,
+            userId: ra.userId,
+            roleId: ra.roleId,
+            roleName: ra.role?.name,
+            roleLevel: ra.role?.level ?? 4,
+            scopeType: ra.scopeType,
+            scopeId: ra.scopeId,
+            validFrom: ra.validFrom,
+            validUntil: ra.validUntil
+          }))
         };
       }));
     }
-    return NextResponse.json(mockUsers);
+
+    // Map mockUsers to include mock assignments matching their userId
+    const mappedMock = mockUsers.map(u => {
+      const uAssignments = mockAssignments.filter(a => a.userId === u.id);
+      return {
+        ...u,
+        roleAssignments: uAssignments
+      };
+    });
+    return NextResponse.json(mappedMock);
   } catch (error) {
     console.warn('Prisma database connection failed. Falling back to mock users with overrides.');
-    return NextResponse.json(mockUsers);
+    const mappedMock = mockUsers.map(u => {
+      const uAssignments = mockAssignments.filter(a => a.userId === u.id);
+      return {
+        ...u,
+        roleAssignments: uAssignments
+      };
+    });
+    return NextResponse.json(mappedMock);
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { firstName, lastName, email, roleId, employeeCode } = body;
+    const { firstName, lastName, email, roleId, employeeCode, clearanceLevel, departmentId } = body;
 
     if (!firstName || !lastName || !email) {
       return NextResponse.json({ error: 'First name, last name, and email are required' }, { status: 400 });
     }
 
     try {
+      const tenant = await prisma.tenant.findFirst();
+      const tenantId = tenant?.id || 't1-uuid';
+
+      const { maxSeats, currentActiveUsers } = await getSeatConsumption(tenantId);
+      if (maxSeats !== null && currentActiveUsers >= maxSeats) {
+        return NextResponse.json({ error: `User seat limit reached. The current license allows a maximum of ${maxSeats} active users.` }, { status: 400 });
+      }
+
       const person = await prisma.person.create({
         data: {
-          tenantId: 't1-uuid',
+          tenantId: tenantId,
           firstName,
           lastName,
         }
@@ -77,10 +127,12 @@ export async function POST(request: NextRequest) {
       const user = await prisma.user.create({
         data: {
           personId: person.id,
-          tenantId: 't1-uuid',
+          tenantId: tenantId,
           loginEmail: email,
           passwordHash: 'dummy-hashed-pass',
           roleId: roleId || null,
+          clearanceLevel: clearanceLevel !== undefined ? parseInt(clearanceLevel) : 1,
+          departmentId: departmentId || null,
           isActive: true
         },
         include: {
@@ -97,6 +149,8 @@ export async function POST(request: NextRequest) {
         isActive: user.isActive,
         roleId: user.roleId,
         roleName: user.role?.name || 'No Role Assigned',
+        clearanceLevel: user.clearanceLevel,
+        departmentId: user.departmentId,
         employeeCode: employeeCode || 'N/A',
         overrides: {}
       });
@@ -110,6 +164,8 @@ export async function POST(request: NextRequest) {
         isActive: true,
         roleId: roleId || 'r3-uuid',
         roleName: roleId === 'r1-uuid' ? 'Super Admin' : roleId === 'r2-uuid' ? 'HR Specialist' : 'Department Manager',
+        clearanceLevel: clearanceLevel !== undefined ? parseInt(clearanceLevel) : 1,
+        departmentId: departmentId || null,
         employeeCode: employeeCode || 'N/A',
         overrides: {}
       };
@@ -124,18 +180,30 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, isActive, roleId, overrides } = body;
+    const { id, isActive, roleId, clearanceLevel, departmentId, overrides } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
 
     try {
+      if (isActive === true) {
+        const currentUser = await prisma.user.findUnique({ where: { id } });
+        if (currentUser && !currentUser.isActive) {
+          const { maxSeats, currentActiveUsers } = await getSeatConsumption(currentUser.tenantId);
+          if (maxSeats !== null && currentActiveUsers >= maxSeats) {
+            return NextResponse.json({ error: `User seat limit reached. The current license allows a maximum of ${maxSeats} active users.` }, { status: 400 });
+          }
+        }
+      }
+
       const updated = await prisma.user.update({
         where: { id },
         data: {
           isActive: isActive !== undefined ? isActive : undefined,
-          roleId: roleId !== undefined ? roleId : undefined
+          roleId: roleId !== undefined ? roleId : undefined,
+          clearanceLevel: clearanceLevel !== undefined ? parseInt(clearanceLevel) : undefined,
+          departmentId: departmentId !== undefined ? departmentId : undefined
         },
         include: {
           person: true,
@@ -183,6 +251,8 @@ export async function PUT(request: NextRequest) {
         isActive: updated.isActive,
         roleId: updated.roleId,
         roleName: updated.role?.name || 'No Role Assigned',
+        clearanceLevel: updated.clearanceLevel,
+        departmentId: updated.departmentId,
         employeeCode: 'N/A',
         overrides: overrides || {}
       });
@@ -219,6 +289,8 @@ export async function PUT(request: NextRequest) {
             isActive: isActive !== undefined ? isActive : u.isActive,
             roleId: roleId !== undefined ? roleId : u.roleId,
             roleName,
+            clearanceLevel: clearanceLevel !== undefined ? parseInt(clearanceLevel) : u.clearanceLevel,
+            departmentId: departmentId !== undefined ? departmentId : u.departmentId,
             overrides: mergedOverrides
           };
         }

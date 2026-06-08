@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 let mockBranches = [
   { 
     id: 'b1-uuid', 
-    name: 'Manila Head Office', 
+    name: 'ACME Holdings Group', 
     parentId: null,
     region: 'Metro Manila', 
     isHeadquarters: true, 
@@ -15,12 +15,12 @@ let mockBranches = [
     pagibigId: '1210-9876-5432',
     birBranchCode: '00000',
     rdoCode: '047',
-    entityType: 'BRANCH',
+    entityType: 'HOLDING',
     createdAt: new Date().toISOString() 
   },
   { 
     id: 'b2-uuid', 
-    name: 'Cebu Branch', 
+    name: 'ACME Cebu Subsidiary', 
     parentId: 'b1-uuid',
     region: 'Visayas', 
     isHeadquarters: false, 
@@ -36,8 +36,24 @@ let mockBranches = [
   },
   { 
     id: 'b3-uuid', 
-    name: 'Davao Office', 
-    parentId: 'b1-uuid',
+    name: 'ACME Cebu Subsidiary - Cebu Branch', 
+    parentId: 'b2-uuid',
+    region: 'Visayas', 
+    isHeadquarters: false, 
+    address: 'HM Tower, 7th Floor,\nGeonzon St, Cebu IT Park,\nLahug, Cebu City, 6000 Cebu',
+    registeredTin: '123-456-789-001',
+    sssId: '03-9123456-8',
+    philhealthId: '01-023456789-2',
+    pagibigId: '1210-9876-5433',
+    birBranchCode: '00001',
+    rdoCode: '083',
+    entityType: 'BRANCH',
+    createdAt: new Date().toISOString() 
+  },
+  { 
+    id: 'b4-uuid', 
+    name: 'ACME Affiliate Ltd', 
+    parentId: null,
     region: 'Mindanao', 
     isHeadquarters: false, 
     address: 'Damosa Gateway, Tower B,\nLanang, Davao City, 8000 Davao del Sur',
@@ -47,10 +63,72 @@ let mockBranches = [
     pagibigId: '1210-9876-5434',
     birBranchCode: '00002',
     rdoCode: '113',
-    entityType: 'SISTER_COMPANY',
+    entityType: 'AFFILIATE',
+    createdAt: new Date().toISOString() 
+  },
+  { 
+    id: 'b5-uuid', 
+    name: 'ACME Sister Corp', 
+    parentId: 'b1-uuid',
+    region: 'Luzon', 
+    isHeadquarters: false, 
+    address: 'Clark Freeport Zone, Pampanga',
+    registeredTin: '123-456-789-005',
+    sssId: '03-9123456-5',
+    philhealthId: '01-023456789-5',
+    pagibigId: '1210-9876-5435',
+    birBranchCode: '00005',
+    rdoCode: '021',
+    entityType: 'SUBSIDIARY',
     createdAt: new Date().toISOString() 
   },
 ];
+
+// Helper validation function
+function validateBranchRelation(body: any, allBranches: any[]) {
+  const { id, name, parentId, entityType } = body;
+  const isRoot = !parentId;
+
+  if (!name) return 'Branch name is required';
+
+  if ((entityType === 'HOLDING' || entityType === 'AFFILIATE') && !isRoot) {
+    return `${entityType === 'HOLDING' ? 'Holding Company' : 'Affiliate'} cannot have a parent company.`;
+  }
+
+  if (entityType === 'HOLDING') {
+    const hasExistingHolding = allBranches.some(b => b.entityType === 'HOLDING' && b.id !== id);
+    if (hasExistingHolding) {
+      return 'Only one Holding Company is allowed at the root level.';
+    }
+  }
+
+  if ((entityType === 'BRANCH' || entityType === 'SUBSIDIARY') && isRoot) {
+    return `${entityType === 'BRANCH' ? 'Branch' : 'Subsidiary'} must have a parent entity.`;
+  }
+
+  if (parentId) {
+    const parent = allBranches.find(b => b.id === parentId);
+    if (!parent) return 'Selected parent entity not found.';
+
+    if (parent.entityType !== 'HOLDING' && parent.entityType !== 'SUBSIDIARY') {
+      return `A parent entity must be a Holding Company or a Subsidiary. "${parent.name}" is a ${parent.entityType}.`;
+    }
+
+    if (parent.entityType === 'HOLDING' && entityType !== 'BRANCH' && entityType !== 'SUBSIDIARY') {
+      return 'A Holding Company can only have Branches or Subsidiaries as children.';
+    }
+
+    if (parent.entityType === 'SUBSIDIARY' && entityType !== 'BRANCH' && entityType !== 'SUBSIDIARY') {
+      return 'A Subsidiary can only have Branches or Subsidiaries as children.';
+    }
+
+    if (entityType === 'BRANCH' && !name.startsWith(`${parent.name} -`)) {
+      return `A branch name must start with its parent company's name followed by a hyphen (e.g., "${parent.name} - Moon Branch").`;
+    }
+  }
+
+  return null;
+}
 
 export async function GET() {
   try {
@@ -59,26 +137,22 @@ export async function GET() {
     });
     
     if (branches.length > 0) {
-      // Map database results and attach mock properties if database fields are missing
-      return NextResponse.json(branches.map((b: any) => {
-        const found = mockBranches.find(mb => mb.id === b.id);
-        return {
-          id: b.id,
-          name: b.name,
-          parentId: b.parentId || found?.parentId || null,
-          region: b.region,
-          isHeadquarters: b.isHeadquarters,
-          address: b.address || found?.address || 'Philippine Office Location Address',
-          registeredTin: b.registeredTin || found?.registeredTin || '',
-          sssId: b.sssId || found?.sssId || '',
-          philhealthId: b.philhealthId || found?.philhealthId || '',
-          pagibigId: b.pagibigId || found?.pagibigId || '',
-          birBranchCode: b.birBranchCode || found?.birBranchCode || '',
-          rdoCode: b.rdoCode || found?.rdoCode || '',
-          entityType: b.entityType || found?.entityType || 'BRANCH',
-          createdAt: b.createdAt,
-        };
-      }));
+      return NextResponse.json(branches.map((b: any) => ({
+        id: b.id,
+        name: b.name,
+        parentId: b.parentId || null,
+        region: b.region,
+        isHeadquarters: b.isHeadquarters,
+        address: b.address || 'Philippine Office Location Address',
+        registeredTin: b.registeredTin || '',
+        sssId: b.sssId || '',
+        philhealthId: b.philhealthId || '',
+        pagibigId: b.pagibigId || '',
+        birBranchCode: b.birBranchCode || '',
+        rdoCode: b.rdoCode || '',
+        entityType: b.entityType || 'BRANCH',
+        createdAt: b.createdAt,
+      })));
     }
     return NextResponse.json(mockBranches);
   } catch (error) {
@@ -92,8 +166,17 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { name, parentId, region, isHeadquarters, address, registeredTin, sssId, philhealthId, pagibigId, birBranchCode, rdoCode, entityType } = body;
 
-    if (!name) {
-      return NextResponse.json({ error: 'Branch name is required' }, { status: 400 });
+    // Get current list for validation
+    let currentBranches: any[] = [];
+    try {
+      currentBranches = await prisma.branch.findMany();
+    } catch {
+      currentBranches = mockBranches;
+    }
+
+    const valErr = validateBranchRelation(body, currentBranches);
+    if (valErr) {
+      return NextResponse.json({ error: valErr }, { status: 400 });
     }
 
     try {
@@ -116,12 +199,12 @@ export async function POST(request: NextRequest) {
           birBranchCode,
           rdoCode,
           entityType: entityType || 'BRANCH',
-        } as any,
+        },
       });
       return NextResponse.json({
         id: newBranch.id,
         name: newBranch.name,
-        parentId: (newBranch as any).parentId || parentId || null,
+        parentId: newBranch.parentId || null,
         region: newBranch.region,
         isHeadquarters: newBranch.isHeadquarters,
         address: address || 'No address specified',
@@ -172,6 +255,18 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Branch ID and name are required' }, { status: 400 });
     }
 
+    let currentBranches: any[] = [];
+    try {
+      currentBranches = await prisma.branch.findMany();
+    } catch {
+      currentBranches = mockBranches;
+    }
+
+    const valErr = validateBranchRelation(body, currentBranches);
+    if (valErr) {
+      return NextResponse.json({ error: valErr }, { status: 400 });
+    }
+
     try {
       if (isHeadquarters) {
         await prisma.branch.updateMany({
@@ -193,12 +288,12 @@ export async function PUT(request: NextRequest) {
           birBranchCode,
           rdoCode,
           entityType: entityType || 'BRANCH',
-        } as any,
+        },
       });
       return NextResponse.json({
         id: updated.id,
         name: updated.name,
-        parentId: (updated as any).parentId || parentId || null,
+        parentId: updated.parentId || null,
         region: updated.region,
         isHeadquarters: updated.isHeadquarters,
         address: address || 'No address specified',
@@ -219,7 +314,7 @@ export async function PUT(request: NextRequest) {
         b.id === id ? { 
           ...b, 
           name, 
-          parentId: parentId !== undefined ? parentId : b.parentId,
+          parentId: parentId !== undefined ? (parentId || null) : b.parentId,
           region, 
           isHeadquarters: !!isHeadquarters, 
           address: address || b.address,

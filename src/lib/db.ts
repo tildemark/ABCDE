@@ -1,19 +1,29 @@
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import pg from 'pg';
 
 const globalForPrisma = global as unknown as { prisma: any };
 
 let prismaInstance: any = null;
 
 try {
+  let connectionString = process.env.DATABASE_URL || "postgresql://admin:changeme@localhost:5435/trace_compliance_master";
+  if (connectionString.startsWith("prisma+postgres://")) {
+    connectionString = "postgresql://admin:changeme@localhost:5435/trace_compliance_master";
+  }
+  const pool = new pg.Pool({ connectionString });
+  const adapter = new PrismaPg(pool);
+
   prismaInstance = globalForPrisma.prisma || new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+    adapter,
+    log: process.env.NODE_ENV === 'development' ? ['warn'] : [],
   });
   
   if (process.env.NODE_ENV !== 'production') {
     globalForPrisma.prisma = prismaInstance;
   }
 } catch (error) {
-  console.warn('WARNING: Failed to instantiate PrismaClient. Database actions will fall back to mock data.');
+  console.warn('WARNING: Failed to instantiate PrismaClient. Database actions will fall back to mock data.', error);
 }
 
 export const prisma = prismaInstance;

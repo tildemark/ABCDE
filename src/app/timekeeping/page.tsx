@@ -22,6 +22,8 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 
 interface Employee {
   id: string;
@@ -54,6 +56,16 @@ const INITIAL_ATTENDANCE: AttendanceLog[] = [
 ];
 
 export default function TimekeepingDashboard() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-slate-500 font-semibold">Loading Timekeeping...</div>}>
+      <TimekeepingDashboardContent />
+    </Suspense>
+  );
+}
+
+function TimekeepingDashboardContent() {
+  const searchParams = useSearchParams();
+  const currentUserId = searchParams.get('userId') || 'usr-super-admin';
   const [activeModules, setActiveModules] = useState<string[]>([]);
   const [attendance, setAttendance] = useState<AttendanceLog[]>(INITIAL_ATTENDANCE);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -97,24 +109,36 @@ export default function TimekeepingDashboard() {
       {/* Top Header Bar */}
       <header className="sticky top-0 z-40 flex items-center justify-between bg-white border-b border-slate-200 px-6 py-2.5 shadow-xs">
         <div className="flex items-center gap-2">
-          <Link href="/" className="flex items-center justify-center w-7 h-7 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors">
+          <Link href="/" className="flex items-center justify-center w-7 h-7 rounded bg-indigo-555/5 text-indigo-600 hover:bg-indigo-100 transition-colors">
             <Clock className="w-4 h-4" />
           </Link>
-          <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold">
+          <div className="flex items-center gap-1.5 text-xs text-slate-505 font-semibold">
             <Link href="/" className="hover:text-slate-800">ABCD ERP System</Link>
             <span className="text-slate-350">/</span>
             <span className="text-slate-800">Timekeeping</span>
           </div>
         </div>
 
-        {/* Navigation Links */}
+        {/* Account widget / Tester Hat Selector */}
         <div className="flex items-center gap-6">
-          <nav className="flex items-center gap-4 text-xs font-semibold text-slate-500">
-            <Link href="/core" className="hover:text-slate-800">Core Setup</Link>
-            <Link href="/hris" className="hover:text-slate-800">HRIS</Link>
-            <Link href="/timekeeping" className="text-indigo-600">Timekeeping</Link>
-            <Link href="/payroll" className="hover:text-slate-800">Payroll</Link>
-          </nav>
+          <div className="flex items-center gap-2 bg-slate-50/80 border border-slate-200/80 px-2.5 py-1 rounded-lg">
+            <span className="text-[10px] font-bold text-slate-405 uppercase tracking-wider">Active Tester Hat:</span>
+            <select
+              value={currentUserId}
+              onChange={(e) => {
+                const params = new URLSearchParams(window.location.search);
+                params.set('userId', e.target.value);
+                window.location.search = params.toString();
+              }}
+              className="bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-700 font-bold focus:outline-none cursor-pointer"
+            >
+              <option value="usr-ceo">CEO Boss (Rank 10 / STANDARD)</option>
+              <option value="usr-super-admin">IT Admin (Rank 8 / SUPER_ADMIN)</option>
+              <option value="usr-hr-mgr">HR Manager (Rank 6 / ADMIN)</option>
+              <option value="usr-hr-spec">HR Specialist (Rank 3 / STANDARD)</option>
+              <option value="usr-auditor">Auditor (Rank 4 / STANDARD + Bypass)</option>
+            </select>
+          </div>
           
           <div className="w-8 h-8 rounded-full overflow-hidden border border-slate-200">
             <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=64&h=64&q=80" alt="Avatar" className="w-full h-full object-cover" />

@@ -1,6 +1,7 @@
 'use client';
-
+// Force Next.js compilation rebuild
 import React, { useState, useEffect, Suspense } from 'react';
+import { DataClassification, ConsentStatus, SystemRole, checkDataPrivacy, checkNavigationAccess, mockUsers, mockUserRoleAssignments, mockRoles } from '@/lib/accessControlClient';
 import {
   Building2,
   LayoutGrid,
@@ -21,7 +22,24 @@ import {
   ChevronRight,
   Search,
   Eye,
-  Settings
+  Settings,
+  Users,
+  UserCheck,
+  UserX,
+  Shield,
+  Filter,
+  FolderOpen,
+  Sparkles,
+  ShieldAlert,
+  Network,
+  Building,
+  GitBranch,
+  Link as LinkIcon,
+  MapPin,
+  Layers,
+  Boxes,
+  Workflow,
+  Clock
 } from 'lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -57,6 +75,8 @@ interface Department {
   managerId: string;
   managerName: string;
   staffCount: number;
+  parentId?: string | null;
+  type?: string;
 }
 
 interface Employee {
@@ -107,14 +127,32 @@ interface AppUser {
   roleName: string;
   employeeCode: string;
   overrides?: any;
+  clearanceLevel?: number;
+  departmentId?: string;
 }
 
 interface AppRole {
   id: string;
   name: string;
-  description: string;
+  complianceBypass?: boolean;
   permissions: any;
 }
+
+export const getCorporateRankLabel = (lvl: number) => {
+  const ranks: Record<number, string> = {
+    1: 'File Request (Non-Employee)',
+    2: 'File Request (Intern)',
+    3: 'File Request (Rank & File)',
+    4: 'Verify Request (Supervisor)',
+    5: 'Recommend Approval (Manager)',
+    6: 'Recommend Approval (Department Head)',
+    7: 'Recommend Approval (Division Head)',
+    8: 'Approve Request (Director)',
+    9: 'Approve Request (Executive)',
+    10: 'Approve Request (President / CEO)'
+  };
+  return ranks[lvl] || `Level ${lvl}`;
+};
 
 export default function CoreSetupPage() {
   return (
@@ -128,9 +166,10 @@ function CoreSetupContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const sectionParam = searchParams.get('section');
-  const activeSection = (sectionParam || 'company') as 'company' | 'departments' | 'users' | 'roles' | 'settings' | 'logs' | 'licensing' | 'privacy' | 'workflows';
+  const activeSection = (sectionParam || 'company') as 'profile' | 'company' | 'departments' | 'users' | 'roles' | 'settings' | 'logs' | 'licensing' | 'privacy' | 'workflows';
 
   const companyTab = (searchParams.get('tab') || 'metadata') as 'metadata' | 'branches' | 'departments';
+  const currentUserId = searchParams.get('userId') || 'usr-super-admin';
 
   const setActiveSection = (sec: string) => {
     router.push(`/core?section=${sec}`);
@@ -145,6 +184,44 @@ function CoreSetupContent() {
       router.replace('/core?section=company&tab=departments');
     }
   }, [activeSection, router]);
+
+  const [sectionAccessDenied, setSectionAccessDenied] = useState(false);
+
+  // Map section name to menu-id for access checking
+  const sectionMenuMap: Record<string, string> = {
+    profile: 'menu-core-profile',
+    company: 'menu-core-company',
+    users: 'menu-core-users',
+    roles: 'menu-core-roles',
+    settings: 'menu-core-settings',
+    privacy: 'menu-core-privacy',
+    workflows: 'menu-core-workflows',
+    logs: 'menu-core-logs',
+    licensing: 'menu-core-licensing',
+  };
+
+  useEffect(() => {
+    async function verifySectionAccess() {
+      setSectionAccessDenied(false);
+      if (!sectionParam) {
+        // No section specified: redirect standard users to profile
+        const hasCompanyAccess = await checkNavigationAccess(currentUserId, 'menu-core-company');
+        if (!hasCompanyAccess) {
+          router.replace(`/core?section=profile&userId=${currentUserId}`);
+        }
+        return;
+      }
+      // Section specified: verify the user can access it
+      const menuId = sectionMenuMap[sectionParam];
+      if (menuId) {
+        const hasAccess = await checkNavigationAccess(currentUserId, menuId);
+        if (!hasAccess) {
+          setSectionAccessDenied(true);
+        }
+      }
+    }
+    verifySectionAccess();
+  }, [sectionParam, currentUserId, router]);
 
   // License & Tenant States
   const [activeModules, setActiveModules] = useState<string[]>([]);
@@ -205,7 +282,7 @@ function CoreSetupContent() {
 
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
   const [editingDept, setEditingDept] = useState<Department | null>(null);
-  const [deptForm, setDeptForm] = useState({ name: '', branchId: '', managerId: '' });
+  const [deptForm, setDeptForm] = useState({ name: '', branchId: '', managerId: '', parentId: '' as string | null, type: 'DEPARTMENT' });
 
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
   const [selectedConsent, setSelectedConsent] = useState<ConsentLog | null>(null);
@@ -224,13 +301,22 @@ function CoreSetupContent() {
 
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
-  const [userForm, setUserForm] = useState({ firstName: '', lastName: '', email: '', roleId: '', employeeCode: '' });
+  const [userForm, setUserForm] = useState({ firstName: '', lastName: '', email: '', roleId: '', employeeCode: '', clearanceLevel: '1', departmentId: '' });
 
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<AppRole | null>(null);
-  const [roleForm, setRoleForm] = useState({ name: '', description: '', permissions: [] as string[] });
+  const [roleForm, setRoleForm] = useState({ name: '', complianceBypass: false });
 
   const [userSearch, setUserSearch] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState('All');
+  const [userDeptFilter, setUserDeptFilter] = useState('All');
+  const [userClearanceFilter, setUserClearanceFilter] = useState('All');
+  const [userStatusFilter, setUserStatusFilter] = useState('All');
+  const [userPage, setUserPage] = useState(1);
+  const [userPageSize, setUserPageSize] = useState('10');
+  const [roleSidebarSearch, setRoleSidebarSearch] = useState('');
+  const [roleSearchFilter, setRoleSearchFilter] = useState('');
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
 
   const [systemModules, setSystemModules] = useState<{ id: string; code: string; name: string; category: string; description: string }[]>([]);
   const [selectedRoleId, setSelectedRoleId] = useState<string>('');
@@ -250,7 +336,7 @@ function CoreSetupContent() {
   const [alertMessage, setAlertMessage] = useState('');
 
   // Sub-tabs state
-  const [privacyTab, setPrivacyTab] = useState<'consent' | 'retention'>('consent');
+  const [privacyTab, setPrivacyTab] = useState<'consent' | 'retention' | 'sandbox'>('consent');
   const [workflowTab, setWorkflowTab] = useState<'queue' | 'history'>('queue');
 
   // General Settings States (Persisting from original page.tsx)
@@ -296,6 +382,14 @@ function CoreSetupContent() {
   const [logActionFilter, setLogActionFilter] = useState('ALL');
   const [logTab, setLogTab] = useState<'all' | 'transactions' | 'access' | 'actions' | 'violations' | 'archives'>('all');
   const [consentSearch, setConsentSearch] = useState('');
+
+  // 5-Pillar Access Sandbox States
+  const [sandboxViewerId, setSandboxViewerId] = useState('usr-hr-mgr');
+  const [sandboxRecordId, setSandboxRecordId] = useState('rec-a');
+  const [sandboxConsentActive, setSandboxConsentActive] = useState(true);
+  const [sandboxFormConsentAttached, setSandboxFormConsentAttached] = useState(false);
+  const [sandboxCreateRecordStatus, setSandboxCreateRecordStatus] = useState('');
+  const [sandboxBypassLogs, setSandboxBypassLogs] = useState<{ id: string; action: string; timestamp: Date }[]>([]);
 
   const [archiveFiles, setArchiveFiles] = useState<{ fileName: string; fileSize: string; dateRange: string; recordsCount: number; bucket: string; purgeDate: string }[]>([]);
   const [selectedArchiveName, setSelectedArchiveName] = useState<string>('');
@@ -480,11 +574,13 @@ function CoreSetupContent() {
         lastName: nameParts.slice(1).join(' ') || '',
         email: usr.email,
         roleId: usr.roleId || '',
-        employeeCode: usr.employeeCode || ''
+        employeeCode: usr.employeeCode || '',
+        clearanceLevel: String(usr.clearanceLevel || 1),
+        departmentId: usr.departmentId || ''
       });
     } else {
       setEditingUser(null);
-      setUserForm({ firstName: '', lastName: '', email: '', roleId: roles[0]?.id || '', employeeCode: '' });
+      setUserForm({ firstName: '', lastName: '', email: '', roleId: roles[0]?.id || '', employeeCode: '', clearanceLevel: '1', departmentId: '' });
     }
     setIsUserModalOpen(true);
   };
@@ -494,7 +590,9 @@ function CoreSetupContent() {
     try {
       const url = '/api/core/users';
       const method = editingUser ? 'PUT' : 'POST';
-      const payload = editingUser ? { id: editingUser.id, ...userForm } : userForm;
+      const payload = editingUser 
+        ? { id: editingUser.id, ...userForm, clearanceLevel: parseInt(userForm.clearanceLevel, 10), departmentId: userForm.departmentId || null }
+        : { ...userForm, clearanceLevel: parseInt(userForm.clearanceLevel, 10), departmentId: userForm.departmentId || null };
 
       const res = await fetch(url, {
         method,
@@ -542,16 +640,40 @@ function CoreSetupContent() {
     }
   };
 
-  // Role Operations
   const handleOpenRoleModal = (role: AppRole | null = null) => {
     if (role) {
       setEditingRole(role);
-      setRoleForm({ name: role.name, description: role.description || '', permissions: role.permissions });
+      setRoleForm({
+        name: role.name,
+        complianceBypass: !!(role as any).complianceBypass
+      });
     } else {
       setEditingRole(null);
-      setRoleForm({ name: '', description: '', permissions: [] });
+      setRoleForm({
+        name: '',
+        complianceBypass: false
+      });
     }
     setIsRoleModalOpen(true);
+  };
+
+  const handleDeleteRole = async (roleId: string) => {
+    if (!confirm('Are you sure you want to delete this role?')) return;
+    try {
+      const res = await fetch(`/api/core/roles?id=${roleId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        const filtered = roles.filter(r => r.id !== roleId);
+        setRoles(filtered);
+        if (selectedRoleId === roleId) {
+          setSelectedRoleId(filtered[0]?.id || '');
+        }
+        triggerAlert('Role deleted successfully');
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleSaveRole = async (e: React.FormEvent) => {
@@ -559,7 +681,17 @@ function CoreSetupContent() {
     try {
       const url = '/api/core/roles';
       const method = editingRole ? 'PUT' : 'POST';
-      const payload = editingRole ? { id: editingRole.id, ...roleForm } : roleForm;
+      
+      const payload = editingRole
+        ? { 
+            id: editingRole.id, 
+            name: roleForm.name, 
+            complianceBypass: roleForm.complianceBypass 
+          }
+        : { 
+            name: roleForm.name, 
+            complianceBypass: roleForm.complianceBypass 
+          };
 
       const res = await fetch(url, {
         method,
@@ -781,13 +913,40 @@ function CoreSetupContent() {
   };
 
   // Department Operations
-  const handleOpenDeptModal = (dept: Department | null = null) => {
+  const handleOpenDeptModal = (dept: Department | null = null, parentDeptId: string | null = null) => {
     if (dept) {
       setEditingDept(dept);
-      setDeptForm({ name: dept.name, branchId: dept.branchId, managerId: dept.managerId });
+      setDeptForm({
+        name: dept.name,
+        branchId: dept.branchId,
+        managerId: dept.managerId,
+        parentId: dept.parentId || '',
+        type: dept.type || 'DEPARTMENT'
+      });
     } else {
       setEditingDept(null);
-      setDeptForm({ name: '', branchId: selectedDeptBranchId || branches[0]?.id || '', managerId: employees[0]?.id || '' });
+
+      // Determine default child type based on parent unit type
+      let defaultType = 'DEPARTMENT';
+      let branchId = selectedDeptBranchId;
+      if (parentDeptId) {
+        const parentDept = departments.find(d => d.id === parentDeptId);
+        if (parentDept) {
+          branchId = parentDept.branchId;
+          if (parentDept.type === 'DIVISION') defaultType = 'DEPARTMENT';
+          else if (parentDept.type === 'DEPARTMENT') defaultType = 'SECTION';
+          else if (parentDept.type === 'SECTION') defaultType = 'SUBSECTION';
+          else if (parentDept.type === 'SUBSECTION') defaultType = 'SUBSECTION';
+        }
+      }
+
+      setDeptForm({
+        name: '',
+        branchId: branchId || branches[0]?.id || '',
+        managerId: employees[0]?.id || '',
+        parentId: parentDeptId || '',
+        type: defaultType
+      });
     }
     setIsDeptModalOpen(true);
   };
@@ -881,6 +1040,39 @@ function CoreSetupContent() {
     return matchesBranch && matchesSearch;
   });
 
+  const getDeptDepth = (dept: Department): number => {
+    let depth = 0;
+    let current = dept;
+    while (current.parentId) {
+      const parent = departments.find(d => d.id === current.parentId);
+      if (!parent || parent.id === current.id) break;
+      depth++;
+      current = parent;
+    }
+    return depth;
+  };
+
+  const getSortedDepartments = (list: Department[]): Department[] => {
+    const sorted: Department[] = [];
+    const visit = (parentId: string | null) => {
+      const children = list.filter(d => d.parentId === parentId);
+      children.sort((a, b) => a.name.localeCompare(b.name));
+      for (const child of children) {
+        sorted.push(child);
+        visit(child.id);
+      }
+    };
+    const roots = list.filter(d => !d.parentId || !list.some(p => p.id === d.parentId));
+    roots.sort((a, b) => a.name.localeCompare(b.name));
+    for (const root of roots) {
+      sorted.push(root);
+      visit(root.id);
+    }
+    return sorted;
+  };
+
+  const sortedFilteredDepartments = getSortedDepartments(filteredDepartments);
+
   // Filtered Audit Logs
   const filteredLogs = auditLogs.filter((log: any) => {
     const matchesSearch =
@@ -927,7 +1119,21 @@ function CoreSetupContent() {
               <div className="w-6 shrink-0" />
             )}
             
-            <Building2 className="w-4 h-4 text-indigo-600 shrink-0" />
+            {(() => {
+              const iconClass = "w-4 h-4 shrink-0";
+              switch (branch.entityType) {
+                case 'HOLDING':
+                  return <Network className={`${iconClass} text-indigo-650`} />;
+                case 'SUBSIDIARY':
+                  return <Building className={`${iconClass} text-purple-650`} />;
+                case 'SISTER_COMPANY':
+                  return <GitBranch className={`${iconClass} text-blue-600`} />;
+                case 'AFFILIATE':
+                  return <LinkIcon className={`${iconClass} text-amber-600`} />;
+                default:
+                  return <Building2 className={`${iconClass} text-slate-500`} />;
+              }
+            })()}
             
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
@@ -1032,14 +1238,26 @@ function CoreSetupContent() {
           </div>
         </div>
 
-        {/* Navigation links */}
+        {/* Tester Hat Selector (Replaced Nav Links) */}
         <div className="flex items-center gap-6">
-          <nav className="flex items-center gap-4 text-xs font-semibold text-slate-500">
-            <span className="text-indigo-600 cursor-default">Core Setup</span>
-            <Link href="/hris" className="hover:text-slate-800">HRIS</Link>
-            <Link href="/timekeeping" className="hover:text-slate-800">Timekeeping</Link>
-            <Link href="/payroll" className="hover:text-slate-800">Payroll</Link>
-          </nav>
+          <div className="flex items-center gap-2 bg-slate-50/80 border border-slate-200/80 px-2.5 py-1 rounded-lg">
+            <span className="text-[10px] font-bold text-slate-405 uppercase tracking-wider">Active Tester Hat:</span>
+            <select
+              value={currentUserId}
+              onChange={(e) => {
+                const params = new URLSearchParams(window.location.search);
+                params.set('userId', e.target.value);
+                window.location.search = params.toString();
+              }}
+              className="bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-700 font-bold focus:outline-none cursor-pointer"
+            >
+              <option value="usr-ceo">CEO Boss (Rank 10 / STANDARD)</option>
+              <option value="usr-super-admin">IT Admin (Rank 8 / SUPER_ADMIN)</option>
+              <option value="usr-hr-mgr">HR Manager (Rank 6 / ADMIN)</option>
+              <option value="usr-hr-spec">HR Specialist (Rank 3 / STANDARD)</option>
+              <option value="usr-auditor">Auditor (Rank 4 / STANDARD + Bypass)</option>
+            </select>
+          </div>
           <div className="w-8 h-8 rounded-full overflow-hidden border border-slate-200">
             <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=64&h=64&q=80" alt="Avatar" className="w-full h-full object-cover" />
           </div>
@@ -1060,8 +1278,308 @@ function CoreSetupContent() {
         {/* Module Details display */}
         <main className="flex-1 min-w-0">
 
+          {/* ACCESS DENIED PANEL */}
+          {sectionAccessDenied && (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6 animate-fadeIn">
+              <div className="w-20 h-20 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center">
+                <Lock className="w-9 h-9 text-amber-500" />
+              </div>
+              <div className="space-y-2 max-w-md">
+                <h2 className="text-xl font-extrabold text-slate-900">Access Restricted</h2>
+                <p className="text-sm text-slate-500">
+                  Your current role does not have permission to access this section.
+                  Contact your system administrator to request elevated access.
+                </p>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-xl p-4 text-xs text-slate-600 space-y-1 w-full max-w-xs shadow-xs text-left">
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-400 uppercase tracking-wider">User</span>
+                  <span className="font-mono text-slate-700">{mockUsers.find(u => u.id === currentUserId)?.name || currentUserId}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-400 uppercase tracking-wider">Role</span>
+                  <span className="font-mono text-slate-700">{mockUsers.find(u => u.id === currentUserId)?.systemRole || 'STANDARD'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-400 uppercase tracking-wider">Section</span>
+                  <span className="font-mono text-slate-700 capitalize">{sectionParam}</span>
+                </div>
+              </div>
+              <Link
+                href={`/core?section=profile&userId=${currentUserId}`}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <User className="w-4 h-4" />
+                Go to My Profile
+              </Link>
+            </div>
+          )}
+
+          {/* SECTION 0: MY PROFILE */}
+          {!sectionAccessDenied && activeSection === 'profile' && (
+
+            <div className="space-y-6 animate-fadeIn">
+              {/* Profile Card Header */}
+              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-950 p-6 md:p-8 text-white shadow-lg border border-slate-800">
+                <div className="absolute top-0 right-0 -mt-6 -mr-6 w-36 h-36 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none"></div>
+                <div className="absolute bottom-0 left-1/3 -mb-12 w-48 h-48 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none"></div>
+                
+                <div className="flex flex-col md:flex-row items-center gap-6 relative z-10">
+                  <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-indigo-400/50 bg-slate-800 shrink-0 shadow-md">
+                    <img 
+                      src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=128&h=128&q=80" 
+                      alt="User Avatar" 
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="text-center md:text-left space-y-1.5 min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
+                      <h2 className="text-xl md:text-2xl font-black tracking-tight truncate">
+                        {mockUsers.find(u => u.id === currentUserId)?.name || 'Unknown User'}
+                      </h2>
+                      <span className="text-[10px] font-bold uppercase tracking-wider bg-indigo-500/25 border border-indigo-500/30 text-indigo-200 px-2.5 py-0.5 rounded-full">
+                        {mockUsers.find(u => u.id === currentUserId)?.systemRole}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 font-mono flex items-center justify-center md:justify-start gap-1">
+                      <Mail className="w-3.5 h-3.5 text-indigo-400" />
+                      {mockUsers.find(u => u.id === currentUserId)?.email || 'N/A'}
+                    </p>
+                    <p className="text-[11px] text-slate-400 font-medium max-w-xl">
+                      Welcome to your personal workspace. This dashboard aggregates your access privileges, entity relationships, security clearances, and recent system interactions.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Grid Layout for Profile Details */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Details card */}
+                <Card className="bg-white border-slate-200 shadow-2xs col-span-1">
+                  <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center gap-2">
+                    <Building2 className="w-4.5 h-4.5 text-indigo-650" />
+                    <div>
+                      <CardTitle className="text-sm font-bold text-slate-900">Affiliation & Organization</CardTitle>
+                      <CardDescription className="text-[10px] text-slate-400">Current active entity assignments.</CardDescription>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-4">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 block uppercase">Assigned Entity</span>
+                      <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl flex items-center gap-3">
+                        <Building2 className="w-4 h-4 text-slate-505" />
+                        <div>
+                          <div className="font-bold text-xs text-slate-800">
+                            {(() => {
+                              const usr = mockUsers.find(u => u.id === currentUserId);
+                              return branches.find(b => b.id === usr?.entityId)?.name || 'Holding / Unassigned';
+                            })()}
+                          </div>
+                          <div className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">
+                            {(() => {
+                              const usr = mockUsers.find(u => u.id === currentUserId);
+                              const br = branches.find(b => b.id === usr?.entityId);
+                              return br?.entityType || 'Entity';
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 block uppercase">Department Cost Center</span>
+                      <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl flex items-center gap-3">
+                        <Network className="w-4 h-4 text-slate-505" />
+                        <div>
+                          <div className="font-bold text-xs text-slate-800">
+                            {(() => {
+                              const usr = mockUsers.find(u => u.id === currentUserId);
+                              return departments.find(d => d.id === usr?.departmentId)?.name || 'Global / Corporate Suite';
+                            })()}
+                          </div>
+                          <div className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">
+                            Cost Center ID: {mockUsers.find(u => u.id === currentUserId)?.departmentId || 'GLOBAL'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 block uppercase">Direct Manager Reference</span>
+                      <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl flex items-center gap-3">
+                        <User className="w-4 h-4 text-slate-505" />
+                        <div>
+                          <div className="font-bold text-xs text-slate-800">
+                            {(() => {
+                              const usr = mockUsers.find(u => u.id === currentUserId);
+                              if (!usr || !usr.managerId) return 'Board of Directors / None';
+                              return mockUsers.find(m => m.id === usr.managerId)?.name || 'Direct Line Manager';
+                            })()}
+                          </div>
+                          <div className="text-[9px] text-slate-400 font-mono">
+                            Manager ID: {mockUsers.find(u => u.id === currentUserId)?.managerId || 'N/A'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Security and privileges card */}
+                <Card className="bg-white border-slate-200 shadow-2xs col-span-1">
+                  <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center gap-2">
+                    <ShieldCheck className="w-4.5 h-4.5 text-indigo-655" />
+                    <div>
+                      <CardTitle className="text-sm font-bold text-slate-900">Clearance & Security</CardTitle>
+                      <CardDescription className="text-[10px] text-slate-400">Your cryptographic and operational access levels.</CardDescription>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-4">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 block uppercase">Action Clearance Rank</span>
+                      <div className="p-3 bg-indigo-50/30 border border-indigo-100 rounded-xl">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className="text-lg font-black text-indigo-700">
+                            Rank {mockUsers.find(u => u.id === currentUserId)?.actionLevel || 1}
+                          </span>
+                          <span className="bg-indigo-100 text-indigo-800 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded-full">
+                            Security Rank
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-medium leading-relaxed">
+                          {getCorporateRankLabel(mockUsers.find(u => u.id === currentUserId)?.actionLevel || 1)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 block uppercase">Audit Compliance Bypass Status</span>
+                      <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <ShieldAlert className="w-4.5 h-4.5 text-slate-450" />
+                          <div>
+                            <div className="font-bold text-xs text-slate-800">Compliance Bypass Privilege</div>
+                            <div className="text-[9px] text-slate-400 leading-normal">Required for external regulator override logs.</div>
+                          </div>
+                        </div>
+                        {(() => {
+                          const usr = mockUsers.find(u => u.id === currentUserId);
+                          const userAssignments = mockUserRoleAssignments.filter((ura: any) => ura.userId === currentUserId);
+                          const userRoleIds = userAssignments.map((a: any) => a.roleId);
+                          const bypassAllowed = mockRoles.filter((r: any) => userRoleIds.includes(r.id)).some((r: any) => r.complianceBypass === true);
+                          return bypassAllowed ? (
+                            <span className="bg-amber-105 text-amber-800 border border-amber-200 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0">
+                              ACTIVE
+                            </span>
+                          ) : (
+                            <span className="bg-slate-100 text-slate-450 border border-slate-200 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0">
+                              INACTIVE
+                            </span>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Module Access & Licensing */}
+                <Card className="bg-white border-slate-200 shadow-2xs col-span-1">
+                  <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center gap-2">
+                    <Sparkles className="w-4.5 h-4.5 text-indigo-650" />
+                    <div>
+                      <CardTitle className="text-sm font-bold text-slate-900">Licensed Core Modules</CardTitle>
+                      <CardDescription className="text-[10px] text-slate-400">Available functions under active tenant license.</CardDescription>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-3">
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-bold text-slate-400 block uppercase mb-1">Active Modules</span>
+                      {activeModules.map((modCode) => (
+                        <div key={modCode} className="flex items-center justify-between p-2 bg-slate-50 border border-slate-150 rounded-lg text-xs font-semibold text-slate-700">
+                          <span>{modCode}</span>
+                          <span className="text-emerald-700 bg-emerald-50 text-[9px] font-bold px-1.5 py-0.2 rounded border border-emerald-200">
+                            Active
+                          </span>
+                        </div>
+                      ))}
+                      {activeModules.length === 0 && (
+                        <div className="p-3 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                          No active modules found.
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Personal Audit Logs */}
+              <Card className="bg-white border-slate-200 shadow-2xs">
+                <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4.5 h-4.5 text-indigo-650 shrink-0" />
+                    <div>
+                      <CardTitle className="text-sm font-bold text-slate-900">Your Action Audit Logs</CardTitle>
+                      <CardDescription className="text-[10px] text-slate-400">Chronological history of interactions initiated by your account credentials.</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50/50 border-b border-slate-200 text-[9px] uppercase font-extrabold tracking-wider text-slate-400">
+                          <th className="px-6 py-2.5">Date & Time</th>
+                          <th className="px-6 py-2.5">Event Type</th>
+                          <th className="px-6 py-2.5">Resource Target</th>
+                          <th className="px-6 py-2.5">Record ID Reference</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
+                        {(() => {
+                          const usr = mockUsers.find(u => u.id === currentUserId);
+                          const userLogs = auditLogs.filter(log => log.actorId === currentUserId || (usr && log.actorName.toLowerCase().includes(usr.name.toLowerCase())));
+                          if (userLogs.length === 0) {
+                            return (
+                              <tr>
+                                <td colSpan={4} className="px-6 py-8 text-center text-xs text-slate-400 italic">
+                                  No transaction audit events recorded under your session context.
+                                </td>
+                              </tr>
+                            );
+                          }
+                          return userLogs.map((log) => (
+                            <tr key={log.logId} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="px-6 py-3 font-mono text-[10px] text-slate-500 whitespace-nowrap">
+                                {new Date(log.createdAt).toLocaleString()}
+                              </td>
+                              <td className="px-6 py-3">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  log.actionType === 'CREATE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                                  log.actionType === 'UPDATE' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
+                                  'bg-rose-50 text-rose-700 border border-rose-200'
+                                }`}>
+                                  {log.actionType}
+                                </span>
+                              </td>
+                              <td className="px-6 py-3 font-bold text-slate-800">
+                                {log.tableName}
+                              </td>
+                              <td className="px-6 py-3 font-mono text-[10px] text-slate-400">
+                                {log.recordId}
+                              </td>
+                            </tr>
+                          ));
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           {/* SECTION 1: COMPANY SETUP (Consolidated Company Metadata, Associated Entities & Branches, and Departments) */}
-          {activeSection === 'company' && (
+          {!sectionAccessDenied && activeSection === 'company' && (
             <Card className="bg-white border-slate-200 shadow-2xs">
               <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center justify-between">
                 <div>
@@ -1419,7 +1937,24 @@ function CoreSetupContent() {
                               <tr key={branch.id} className="hover:bg-slate-50/50">
                                 <td className="px-4 py-3 font-semibold text-slate-800">
                                   <div className="flex flex-col gap-1">
-                                    <span className="font-semibold text-slate-805">{branch.name}</span>
+                                    <div className="flex items-center gap-1.5">
+                                      {(() => {
+                                        const iconClass = "w-3.5 h-3.5 shrink-0";
+                                        switch (branch.entityType) {
+                                          case 'HOLDING':
+                                            return <Network className={`${iconClass} text-indigo-650`} />;
+                                          case 'SUBSIDIARY':
+                                            return <Building className={`${iconClass} text-purple-650`} />;
+                                          case 'SISTER_COMPANY':
+                                            return <GitBranch className={`${iconClass} text-blue-600`} />;
+                                          case 'AFFILIATE':
+                                            return <LinkIcon className={`${iconClass} text-amber-600`} />;
+                                          default:
+                                            return <Building2 className={`${iconClass} text-slate-500`} />;
+                                        }
+                                      })()}
+                                      <span className="font-semibold text-slate-805">{branch.name}</span>
+                                    </div>
                                     <span className={`self-start text-[9px] px-1.5 py-0.5 rounded-md font-bold tracking-wider uppercase border ${branch.entityType === 'SUBSIDIARY' ? 'bg-purple-50 text-purple-700 border-purple-200/50' :
                                         branch.entityType === 'SISTER_COMPANY' ? 'bg-blue-50 text-blue-700 border-blue-200/50' :
                                           branch.entityType === 'AFFILIATE' ? 'bg-amber-50 text-amber-705 border-amber-200/50' :
@@ -1544,9 +2079,47 @@ function CoreSetupContent() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-xs">
-                          {filteredDepartments.map((dept) => (
-                            <tr key={dept.id} className="hover:bg-slate-50/50">
-                              <td className="px-4 py-3 font-semibold text-slate-800">{dept.name}</td>
+                           {sortedFilteredDepartments.map((dept) => {
+                             const depth = getDeptDepth(dept);
+                             return (
+                               <tr key={dept.id} className="hover:bg-slate-50/50">
+                                 <td className="px-4 py-3 font-semibold text-slate-800 animate-fade-in" style={{ paddingLeft: `${depth * 20 + 16}px` }}>
+                                   <div className="flex flex-col gap-1.5">
+                                     <div className="flex items-center gap-1.5">
+                                       {depth > 0 && (
+                                         <span className="text-slate-350 font-mono select-none mr-0.5">└─</span>
+                                       )}
+                                       {(() => {
+                                         const iconClass = "w-3.5 h-3.5 shrink-0";
+                                         switch (dept.type) {
+                                           case 'DIVISION':
+                                             return <Layers className={`${iconClass} text-indigo-650`} />;
+                                           case 'DEPARTMENT':
+                                             return <FolderOpen className={`${iconClass} text-purple-650`} />;
+                                           case 'SECTION':
+                                             return <Boxes className={`${iconClass} text-teal-650`} />;
+                                           case 'SUBSECTION':
+                                             return <Workflow className={`${iconClass} text-amber-600`} />;
+                                           default:
+                                             return <FolderOpen className={`${iconClass} text-slate-500`} />;
+                                         }
+                                       })()}
+                                       <span className="font-semibold text-slate-855">{dept.name}</span>
+                                     </div>
+                                  <span className={`self-start text-[9px] px-1.5 py-0.5 rounded-md font-bold tracking-wider uppercase border ${
+                                    dept.type === 'DIVISION' ? 'bg-indigo-50 text-indigo-700 border-indigo-200/50' :
+                                    dept.type === 'DEPARTMENT' ? 'bg-purple-50 text-purple-700 border-purple-200/50' :
+                                    dept.type === 'SECTION' ? 'bg-teal-50 text-teal-700 border-teal-200/50' :
+                                    dept.type === 'SUBSECTION' ? 'bg-amber-50 text-amber-700 border-amber-200/50' :
+                                    'bg-slate-50 text-slate-700 border-slate-200'
+                                  }`}>
+                                    {dept.type === 'DIVISION' ? 'Division' :
+                                     dept.type === 'DEPARTMENT' ? 'Department' :
+                                     dept.type === 'SECTION' ? 'Section' :
+                                     dept.type === 'SUBSECTION' ? 'Subsection' : 'Department'}
+                                  </span>
+                                </div>
+                              </td>
                               <td className="px-4 py-3 text-slate-500">{dept.branchName}</td>
                               {activeModules.includes('HUMAN_RESOURCES') && (
                                 <>
@@ -1556,6 +2129,13 @@ function CoreSetupContent() {
                               )}
                               <td className="px-4 py-3 text-right">
                                 <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    onClick={() => handleOpenDeptModal(null, dept.id)}
+                                    className="p-1 rounded hover:bg-indigo-50 text-indigo-650 cursor-pointer"
+                                    title="Add Child Unit"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                  </button>
                                   <button
                                     onClick={() => handleOpenDeptModal(dept)}
                                     className="p-1 rounded hover:bg-slate-100 text-slate-505 cursor-pointer"
@@ -1573,7 +2153,8 @@ function CoreSetupContent() {
                                 </div>
                               </td>
                             </tr>
-                          ))}
+                          );
+                        })}
                         </tbody>
                       </table>
                     </div>
@@ -1584,7 +2165,7 @@ function CoreSetupContent() {
           )}
 
           {/* SECTION 3: SYSTEM CONFIGS */}
-          {activeSection === 'settings' && (
+          {!sectionAccessDenied && activeSection === 'settings' && (
             <div className="space-y-6">
               {/* Tab options bar */}
               <div className="w-full bg-white border border-slate-200 rounded-lg flex items-center gap-1 overflow-x-auto px-2 py-1 shadow-2xs">
@@ -1735,7 +2316,7 @@ function CoreSetupContent() {
           )}
 
           {/* SECTION 4: AUDIT TRAIL LOGS */}
-          {activeSection === 'logs' && (
+          {!sectionAccessDenied && activeSection === 'logs' && (
             <Card className="bg-white border-slate-200 shadow-2xs">
               <CardHeader>
                 <CardTitle className="text-base font-bold text-slate-900">Audit Trail Ledger</CardTitle>
@@ -1981,7 +2562,7 @@ function CoreSetupContent() {
           )}
 
           {/* SECTION 5: LICENSE CARD */}
-          {activeSection === 'licensing' && (
+          {!sectionAccessDenied && activeSection === 'licensing' && (
             <Card className="bg-white border-slate-200 shadow-2xs">
               <CardHeader className="border-b border-slate-100 bg-slate-50/40">
                 <CardTitle className="text-xs uppercase font-extrabold tracking-wider text-slate-400 flex items-center gap-2">
@@ -2068,7 +2649,7 @@ function CoreSetupContent() {
           )}
 
           {/* SECTION 6: DATA PRIVACY */}
-          {activeSection === 'privacy' && (
+          {!sectionAccessDenied && activeSection === 'privacy' && (
             <div className="space-y-6">
               {/* Sub-tabs menu */}
               <div className="w-full bg-white border border-slate-200 rounded-lg flex items-center gap-1 overflow-x-auto px-2 py-1 shadow-2xs">
@@ -2089,6 +2670,15 @@ function CoreSetupContent() {
                     }`}
                 >
                   Retention & Shredding Rules
+                </button>
+                <button
+                  onClick={() => setPrivacyTab('sandbox')}
+                  className={`px-3 py-1.5 text-xs font-semibold whitespace-nowrap rounded-md transition-all cursor-pointer ${privacyTab === 'sandbox'
+                      ? 'bg-slate-900 text-white font-bold'
+                      : 'text-slate-455 hover:bg-slate-50 hover:text-slate-750'
+                    }`}
+                >
+                  5-Pillar Access Sandbox
                 </button>
               </div>
 
@@ -2166,6 +2756,300 @@ function CoreSetupContent() {
                     </div>
                   </CardContent>
                 </Card>
+              )}
+
+              {/* Sandbox Tab */}
+              {privacyTab === 'sandbox' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Left Column: Interactive Access & Privacy Simulator */}
+                  <Card className="bg-white border-slate-200 shadow-2xs">
+                    <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/50 p-4">
+                      <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                        <ShieldAlert className="w-5 h-5 text-indigo-650" />
+                        Gatekeeper Real-time Access Evaluator
+                      </CardTitle>
+                      <CardDescription className="text-xs text-slate-400">
+                        Select a Viewer and a target record to watch the 3-Gate Check evaluate and redact sensitive SPI fields in real-time.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-6 space-y-5">
+                      {/* Select Viewer */}
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-700 font-bold">1. Select Simulated Viewer (Corporate Rank & Hat)</Label>
+                        <select
+                          value={sandboxViewerId}
+                          onChange={(e) => setSandboxViewerId(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-semibold focus:bg-white text-slate-800"
+                        >
+                          <option value="usr-ceo">CEO Boss (Rank 10 - President/CEO / STANDARD Software Role)</option>
+                          <option value="usr-super-admin">System Admin (Rank 8 - Director / SUPER_ADMIN Software Role)</option>
+                          <option value="usr-hr-mgr">HR Manager (Rank 6 - Department Head / ADMIN Software Role)</option>
+                          <option value="usr-hr-spec">HR Specialist (Rank 3 - Rank & File / STANDARD Software Role)</option>
+                          <option value="usr-auditor">External Compliance Auditor (Rank 4 - Supervisor / STANDARD Software Role + Compliance Bypass)</option>
+                        </select>
+                      </div>
+
+                      {/* Select Target Record */}
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-700 font-bold">2. Select Target Document/Record Classification</Label>
+                        <select
+                          value={sandboxRecordId}
+                          onChange={(e) => setSandboxRecordId(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-semibold focus:bg-white text-slate-800"
+                        >
+                          <option value="rec-a">Employee Contract - STANDARD (Entity: Manila Branch, Level 3)</option>
+                          <option value="rec-b">Board Resignation Brief - CONFIDENTIAL (Entity: Holding, Level 8)</option>
+                          <option value="rec-c">Executive Compensation SPI - SENSITIVE (Entity: Holding, Level 8, Owner: CEO Boss)</option>
+                        </select>
+                      </div>
+
+                      {/* Simulator Controls & Consent ledger toggler */}
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                        <h4 className="text-xs font-extrabold text-slate-850 uppercase tracking-wider">Consent Registry Ledger Control</h4>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-slate-600 font-semibold">CEO SPI Data Consent (Granted to Auditor Role):</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nextVal = !sandboxConsentActive;
+                              setSandboxConsentActive(nextVal);
+                              // Sync to mock structure dynamically
+                              const { mockConsentLedger } = require('@/lib/accessControlClient');
+                              if (mockConsentLedger.length > 0) {
+                                mockConsentLedger[0].status = nextVal ? 'ACTIVE' : 'REVOKED';
+                              }
+                            }}
+                            className={`px-3 py-1 rounded text-[10px] font-bold border transition-all cursor-pointer ${
+                              sandboxConsentActive 
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' 
+                                : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                            }`}
+                          >
+                            {sandboxConsentActive ? 'Status: ACTIVE (Consent Granted)' : 'Status: REVOKED (Access Denied)'}
+                          </button>
+                        </div>
+                        <span className="text-[10px] text-slate-400 block mt-1 leading-normal">
+                          DPA Gatekeeper Rule: Even if the viewer has sufficient rank, accessing SENSITIVE (SPI) fields requires an ACTIVE consent ledger record from the owner (CEO Boss).
+                        </span>
+                      </div>
+
+                      {/* Access check evaluation output */}
+                      {(() => {
+                        // Simulated records
+                        const recordMap: Record<string, any> = {
+                          'rec-a': { id: 'rec-a', entityId: 'ent-branch-mnl', departmentId: 'dept-hr', classification: DataClassification.STANDARD, actionLevel: 3, dataSubjectId: 'usr-hr-spec', payload: '$3,500 Base' },
+                          'rec-b': { id: 'rec-b', entityId: 'ent-holding', departmentId: 'dept-executive', classification: DataClassification.CONFIDENTIAL, actionLevel: 8, dataSubjectId: 'usr-ceo', payload: 'CONFIDENTIAL: Merger Plan Alpha' },
+                          'rec-c': { id: 'rec-c', entityId: 'ent-holding', departmentId: 'dept-executive', classification: DataClassification.SENSITIVE, actionLevel: 8, dataSubjectId: 'usr-ceo', payload: 'SENSITIVE SPI: $250,000 CEO Bonus' }
+                        };
+
+                        const record = recordMap[sandboxRecordId];
+                        
+                        const viewerObj = {
+                          'usr-ceo': { id: 'usr-ceo', entityId: 'ent-holding', departmentId: 'dept-executive', systemRole: SystemRole.STANDARD, actionLevel: 10 },
+                          'usr-super-admin': { id: 'usr-super-admin', entityId: 'ent-holding', departmentId: 'dept-it', systemRole: SystemRole.SUPER_ADMIN, actionLevel: 8 },
+                          'usr-hr-mgr': { id: 'usr-hr-mgr', entityId: 'ent-sub-ph', departmentId: 'dept-hr', systemRole: SystemRole.ADMIN, actionLevel: 6 },
+                          'usr-hr-spec': { id: 'usr-hr-spec', entityId: 'ent-branch-mnl', departmentId: 'dept-hr', systemRole: SystemRole.STANDARD, actionLevel: 3 },
+                          'usr-auditor': { id: 'usr-auditor', entityId: 'ent-holding', departmentId: 'dept-audit', systemRole: SystemRole.STANDARD, actionLevel: 4 }
+                        }[sandboxViewerId];
+
+                        let allowed = false;
+                        let isRedacted = true;
+                        let reason = '';
+                        let bypassLogged = false;
+
+                        if (viewerObj) {
+                          if (record.classification === DataClassification.STANDARD) {
+                            if (viewerObj.systemRole === SystemRole.SUPER_ADMIN) {
+                              allowed = true;
+                              isRedacted = false;
+                            } else if (viewerObj.systemRole === SystemRole.ADMIN) {
+                              if (record.departmentId === viewerObj.departmentId) {
+                                allowed = true;
+                                isRedacted = false;
+                              } else {
+                                reason = 'Admin restricted to department records';
+                              }
+                            } else {
+                              // Standard user cascade check
+                              let allowedEntities = [viewerObj.entityId];
+                              if (viewerObj.id === 'usr-hr-spec') {
+                                // Exact Entity only
+                              } else {
+                                // Downward Cascade
+                                allowedEntities = [viewerObj.entityId, 'ent-sub-ph', 'ent-branch-mnl', 'ent-branch-cebu'];
+                              }
+                              if (allowedEntities.includes(record.entityId)) {
+                                allowed = true;
+                                isRedacted = false;
+                              } else {
+                                reason = 'Access denied: Entity boundary restriction';
+                              }
+                            }
+                          } else if (record.classification === DataClassification.CONFIDENTIAL) {
+                            if (record.actionLevel <= viewerObj.actionLevel) {
+                              allowed = true;
+                              isRedacted = false;
+                            } else if (viewerObj.id === 'usr-auditor') {
+                              allowed = true;
+                              isRedacted = false;
+                              bypassLogged = true;
+                              reason = 'Bypassed by External Compliance Audit';
+                            } else {
+                              reason = `Insufficient human actionLevel (Required: ${record.actionLevel}, User: ${viewerObj.actionLevel})`;
+                            }
+                          } else if (record.classification === DataClassification.SENSITIVE) {
+                            if (record.actionLevel > viewerObj.actionLevel) {
+                              reason = 'Insufficient Rank for SENSITIVE data';
+                            } else {
+                              // Consent required
+                              if (viewerObj.id === 'usr-auditor' && sandboxConsentActive) {
+                                allowed = true;
+                                isRedacted = false;
+                              } else if (viewerObj.id === 'usr-ceo') {
+                                allowed = true;
+                                isRedacted = false;
+                              } else {
+                                reason = 'Redacted: SPI Consent missing or revoked';
+                              }
+                            }
+                          }
+                        }
+
+                        return (
+                          <div className={`p-4 rounded-xl border transition-all ${
+                            allowed 
+                              ? (isRedacted ? 'bg-amber-50/30 border-amber-200' : 'bg-emerald-50/30 border-emerald-200')
+                              : 'bg-rose-50/20 border-rose-200'
+                          }`}>
+                            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide border-b border-slate-100 pb-2 mb-3">
+                              3-Gate Check Evaluation Result
+                            </h4>
+                            <div className="grid grid-cols-2 gap-3 text-xs">
+                              <div>
+                                <span className="text-slate-400 block text-[10px] uppercase font-bold">Access Allowed</span>
+                                <span className={`font-bold ${allowed ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                  {allowed ? 'YES (Authorized)' : 'NO (403 Forbidden)'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[10px] uppercase font-bold">Data Redaction Status</span>
+                                <span className={`font-bold ${isRedacted ? 'text-rose-700' : 'text-emerald-705'}`}>
+                                  {isRedacted ? 'REDACTED (Hidden Field)' : 'CLEAR (Field Visible)'}
+                                </span>
+                              </div>
+                              <div className="col-span-2">
+                                <span className="text-slate-400 block text-[10px] uppercase font-bold">DTO Payload Output</span>
+                                <div className="mt-1 p-2 bg-white rounded border border-slate-200 font-mono text-xs text-slate-800 flex items-center justify-between">
+                                  <span>{allowed && !isRedacted ? record.payload : '[REDACTED CONTENT]'}</span>
+                                  {record.classification === DataClassification.CONFIDENTIAL && (
+                                    <span className="bg-amber-55 text-amber-800 text-[8px] font-extrabold px-1.5 py-0.5 rounded border border-amber-250/50 uppercase">
+                                      [Internal Only]
+                                    </span>
+                                  )}
+                                  {record.classification === DataClassification.SENSITIVE && (
+                                    <span className="bg-rose-50 text-rose-800 text-[8px] font-extrabold px-1.5 py-0.5 rounded border border-rose-250/50 uppercase">
+                                      [SPI - Consent Required]
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              {reason && (
+                                <div className="col-span-2">
+                                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Policy Evaluation Logic</span>
+                                  <span className="text-slate-650 font-semibold text-[11px] block mt-0.5">{reason}</span>
+                                </div>
+                              )}
+                              {bypassLogged && (
+                                <div className="col-span-2 bg-amber-50 border border-amber-200/50 p-2.5 rounded-lg flex flex-col gap-1 mt-1">
+                                  <span className="text-[10px] font-bold text-amber-800 flex items-center gap-1 uppercase tracking-wider">
+                                    ⚠️ Security Trigger: Audit Bypass Logged
+                                  </span>
+                                  <span className="text-[10px] text-amber-705 leading-normal">
+                                    Auditor bypassed actionLevel check. System automatically posted a transaction record to SystemAuditLog.
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </CardContent>
+                  </Card>
+
+                  {/* Right Column: Hard Stop on Entry simulation form */}
+                  <div className="space-y-6">
+                    <Card className="bg-white border-slate-200 shadow-2xs">
+                      <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/50 p-4">
+                        <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                          <Database className="w-5 h-5 text-indigo-650" />
+                          Simulated Record Submission Form (Hard Stop Guard)
+                        </CardTitle>
+                        <CardDescription className="text-xs text-slate-400">
+                          Create a medical history or banking record (classified as SENSITIVE). Submission is physically blocked by the browser engine until consent is digitally attached.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="p-6 space-y-4">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-slate-700">Record Data Field Name</Label>
+                          <Input disabled defaultValue="Executive Annual Medical Checkup Record" className="bg-slate-100 text-slate-600 text-xs h-8" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-slate-700">Classification Level</Label>
+                          <div className="flex items-center gap-2">
+                            <span className="bg-rose-50 text-rose-800 text-[10px] font-extrabold px-2.5 py-1 rounded border border-rose-250/50 uppercase tracking-wider flex items-center gap-1">
+                              [SPI - Consent Required]
+                            </span>
+                            <span className="text-[11px] text-slate-450 font-medium">Classified as Sensitive Personal Info (DPA Gate 3)</span>
+                          </div>
+                        </div>
+
+                        {/* Digitally attached consent checkbox */}
+                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex items-start gap-3 mt-3">
+                          <input
+                            type="checkbox"
+                            id="sandbox-form-consent"
+                            checked={sandboxFormConsentAttached}
+                            onChange={(e) => {
+                              setSandboxFormConsentAttached(e.target.checked);
+                              setSandboxCreateRecordStatus('');
+                            }}
+                            className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                          />
+                          <div className="space-y-0.5">
+                            <Label htmlFor="sandbox-form-consent" className="text-xs text-slate-755 font-bold cursor-pointer">
+                              Attach Digitally Signed DPA Consent Form
+                            </Label>
+                            <span className="text-[10px] text-slate-400 block leading-tight">
+                              Uploads consent token confirming the employee explicitly granted permissions for this specific record processing.
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Submit Button guarded by hard stop rule */}
+                        <div className="pt-2">
+                          <button
+                            type="button"
+                            disabled={!sandboxFormConsentAttached}
+                            onClick={() => setSandboxCreateRecordStatus('Success: Consent verified. Record successfully encrypted and persisted in SENSITIVE table.')}
+                            className={`w-full py-2 rounded-lg text-xs font-bold transition-all ${
+                              sandboxFormConsentAttached 
+                                ? 'bg-slate-900 text-white hover:bg-slate-800 cursor-pointer shadow-xs' 
+                                : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                            }`}
+                          >
+                            {!sandboxFormConsentAttached ? 'Submit Blocked: Attach Consent First' : 'Submit Record'}
+                          </button>
+                        </div>
+
+                        {sandboxCreateRecordStatus && (
+                          <div className="p-3 bg-emerald-50 border border-emerald-250 text-emerald-800 rounded-lg text-xs font-semibold leading-normal">
+                            ✓ {sandboxCreateRecordStatus}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
               )}
 
               {/* Retention Tab */}
@@ -2304,7 +3188,7 @@ function CoreSetupContent() {
           )}
 
           {/* SECTION 7: WORKFLOWS */}
-          {activeSection === 'workflows' && (
+          {!sectionAccessDenied && activeSection === 'workflows' && (
             <div className="space-y-6">
               {/* Sub-tabs menu */}
               <div className="w-full bg-white border border-slate-200 rounded-lg flex items-center gap-1 overflow-x-auto px-2 py-1 shadow-2xs">
@@ -2417,185 +3301,912 @@ function CoreSetupContent() {
               )}
             </div>
           )}
-
-          {/* SECTION 8: USERS */}
-          {activeSection === 'users' && (
-            <Card className="bg-white border-slate-200 shadow-2xs">
-              <CardHeader className="flex flex-row items-center justify-between pb-3">
-                <div>
-                  <CardTitle className="text-base font-bold text-slate-900">User Accounts Directory</CardTitle>
-                  <CardDescription className="text-xs text-slate-400">Manage login credentials, active status, and role assignments.</CardDescription>
-                </div>
-                <Button
-                  onClick={() => handleOpenUserModal()}
-                  className="bg-indigo-600 hover:bg-indigo-550 text-white font-semibold text-xs px-3 h-8 rounded-lg flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  New User
-                </Button>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                  <Input
-                    placeholder="Search users..."
-                    value={userSearch}
-                    onChange={(e) => setUserSearch(e.target.value)}
-                    className="pl-8 bg-slate-50 border-slate-200 text-xs h-8"
-                  />
+          {!sectionAccessDenied && activeSection === 'users' && (
+            <div className="space-y-6 animate-fadeIn">
+              {/* Premium Metrics Dashboard */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="relative overflow-hidden p-5 bg-white border border-slate-200 rounded-2xl shadow-xs transition-all hover:shadow-md group">
+                  <div className="absolute top-0 right-0 p-6 opacity-5 transition-transform group-hover:scale-110">
+                    <Users className="w-16 h-16 text-slate-900" />
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Directory Users</span>
+                    <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
+                      <Users className="w-4 h-4" />
+                    </span>
+                  </div>
+                  <strong className="text-slate-800 text-3xl font-extrabold block mt-2">{users.length}</strong>
+                  <div className="text-[10px] text-slate-400 mt-1.5 font-medium">Global workforce credentials registered</div>
                 </div>
 
-                <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase font-bold tracking-wider text-slate-450">
-                        <th className="px-4 py-2.5">User Details</th>
-                        <th className="px-4 py-2.5">Login Email</th>
-                        <th className="px-4 py-2.5">Access Role</th>
-                        <th className="px-4 py-2.5">Employee ID</th>
-                        <th className="px-4 py-2.5">Status</th>
-                        <th className="px-4 py-2.5 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-xs">
-                      {users
-                        .filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase()) || u.email.toLowerCase().includes(userSearch.toLowerCase()))
-                        .map((usr) => (
-                          <tr key={usr.id} className="hover:bg-slate-50/50">
-                            <td className="px-4 py-3 font-semibold text-slate-800">{usr.name}</td>
-                            <td className="px-4 py-3 text-slate-550">{usr.email}</td>
-                            <td className="px-4 py-3">
-                              <span className="px-2 py-0.5 rounded-full border bg-slate-50 text-slate-700 text-[10px] font-bold border-slate-200">
-                                {usr.roleName}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 font-mono text-[10px] text-slate-400">{usr.employeeCode}</td>
-                            <td className="px-4 py-3">
-                              <button
-                                onClick={() => handleToggleUserStatus(usr)}
-                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border cursor-pointer ${usr.isActive
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200/50'
-                                    : 'bg-slate-100 text-slate-450 border-slate-200'
-                                  }`}
-                              >
-                                {usr.isActive ? 'Active' : 'Inactive'}
-                              </button>
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
-                                <button
-                                  onClick={() => {
-                                    setOverrideUser(usr);
-                                    if (systemModules.length > 0) {
-                                      setOverrideModule(systemModules[0].code);
-                                    }
-                                    setOverrideAction('read');
-                                    setOverrideValue('INHERIT');
-                                    setIsOverrideModalOpen(true);
-                                  }}
-                                  className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 text-[10px] font-bold rounded border border-amber-200/50 cursor-pointer"
-                                  title="Custom Overrides"
-                                >
-                                  Overrides
-                                </button>
-                                <button
-                                  onClick={() => handleOpenUserModal(usr)}
-                                  className="p-1 rounded hover:bg-slate-100 text-slate-550 cursor-pointer"
-                                  title="Edit User"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteUser(usr.id)}
-                                  className="p-1 rounded hover:bg-red-50 text-red-500 cursor-pointer"
-                                  title="Delete User"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          {activeSection === 'roles' && (
-            <Card className="bg-white border-slate-200 shadow-2xs">
-              <CardHeader className="flex flex-row items-center justify-between pb-3">
-                <div>
-                  <CardTitle className="text-base font-bold text-slate-900">Roles & System Permissions</CardTitle>
-                  <CardDescription className="text-xs text-slate-400">Configure role descriptions and check/uncheck permissions matrix.</CardDescription>
-                </div>
-                <Button
-                  onClick={() => handleOpenRoleModal()}
-                  className="bg-indigo-600 hover:bg-indigo-550 text-white font-semibold text-xs px-3 h-8 rounded-lg flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  New Role
-                </Button>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Active Role Selector */}
-                <div className="flex items-center gap-3 bg-slate-50 p-4 border border-slate-200 rounded-xl max-w-xs">
-                  <Label htmlFor="active-role-select" className="text-xs text-slate-650 font-bold shrink-0">Configure Role:</Label>
-                  <Select value={selectedRoleId} onValueChange={(val) => setSelectedRoleId(val || '')}>
-                    <SelectTrigger id="active-role-select" className="bg-white border-slate-200 text-xs h-8">
-                      <SelectValue placeholder="Select a role">
-                        {roles.find(r => r.id === selectedRoleId)?.name || selectedRoleId}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border border-slate-200 text-slate-750 text-xs">
-                      {roles.map(r => (
-                        <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="relative overflow-hidden p-5 bg-white border border-slate-200 rounded-2xl shadow-xs transition-all hover:shadow-md group">
+                  <div className="absolute top-0 right-0 p-6 opacity-5 transition-transform group-hover:scale-110">
+                    <UserCheck className="w-16 h-16 text-emerald-900" />
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Accounts</span>
+                    <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+                      <UserCheck className="w-4 h-4" />
+                    </span>
+                  </div>
+                  <strong className="text-emerald-700 text-3xl font-extrabold block mt-2">
+                    {users.filter(u => u.isActive).length}
+                  </strong>
+                  <div className="text-[10px] text-emerald-605 mt-1.5 font-semibold">
+                    {((users.filter(u => u.isActive).length / (users.length || 1)) * 100).toFixed(0)}% of directory enabled
+                  </div>
                 </div>
 
-                <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase font-bold tracking-wider text-slate-455">
-                        <th className="px-4 py-3">Module / Document Type</th>
-                        {['read', 'create', 'write', 'delete', 'print', 'report', 'import', 'export', 'share', 'email'].map((verb) => (
-                          <th key={verb} className="px-3 py-3 text-center min-w-[70px] capitalize">{verb}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-xs">
-                      {systemModules.map((sMod) => {
-                        const activeRole = roles.find(r => r.id === selectedRoleId);
-                        const rolePerms = activeRole?.permissions?.[sMod.code] || {};
+                <div className="relative overflow-hidden p-5 bg-white border border-slate-200 rounded-2xl shadow-xs transition-all hover:shadow-md group">
+                  <div className="absolute top-0 right-0 p-6 opacity-5 transition-transform group-hover:scale-110">
+                    <Shield className="w-16 h-16 text-violet-900" />
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Avg Clearance Rank</span>
+                    <span className="p-1.5 rounded-lg bg-violet-50 text-violet-600">
+                      <Shield className="w-4 h-4" />
+                    </span>
+                  </div>
+                  <strong className="text-violet-750 text-3xl font-extrabold block mt-2">
+                    {(users.reduce((acc, u) => acc + (u.clearanceLevel || 1), 0) / (users.length || 1)).toFixed(1)}
+                  </strong>
+                  <div className="text-[10px] text-slate-400 mt-1.5 font-medium">Clearance hierarchy index rating</div>
+                </div>
+
+                <div className="relative overflow-hidden p-5 bg-white border border-slate-200 rounded-2xl shadow-xs transition-all hover:shadow-md group">
+                  <div className="absolute top-0 right-0 p-6 opacity-5 transition-transform group-hover:scale-110">
+                    <UserX className="w-16 h-16 text-rose-900" />
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Deactivated / Suspended</span>
+                    <span className="p-1.5 rounded-lg bg-rose-50 text-rose-600">
+                      <UserX className="w-4 h-4" />
+                    </span>
+                  </div>
+                  <strong className="text-rose-600 text-3xl font-extrabold block mt-2">
+                    {users.filter(u => !u.isActive).length}
+                  </strong>
+                  <div className="text-[10px] text-rose-505 mt-1.5 font-semibold">Immediate security hold status</div>
+                </div>
+              </div>
+
+              {/* Advanced Query Control Bar & User Table */}
+              <Card className="bg-white border-slate-200 shadow-xs rounded-2xl overflow-hidden">
+                <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-slate-100 gap-4 bg-slate-50/50 px-6 py-5">
+                  <div>
+                    <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                      <span>User Accounts Directory</span>
+                      <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-indigo-200/50">
+                        {users.length} Total
+                      </span>
+                    </CardTitle>
+                    <CardDescription className="text-xs text-slate-455 mt-1">Manage global enterprise login credentials, vertical clearances, and custom overrides.</CardDescription>
+                  </div>
+                  <Button
+                    onClick={() => handleOpenUserModal()}
+                    className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-4 h-9 rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-all hover:-translate-y-0.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Personnel
+                  </Button>
+                </CardHeader>
+                <CardContent className="space-y-4 p-6">
+                  {/* Multi-filter Dashboard Controls */}
+                  <div className="flex flex-col gap-4 bg-slate-50 p-4 border border-slate-200 rounded-2xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500 font-bold uppercase tracking-wider">
+                        <Filter className="w-3.5 h-3.5 text-slate-400" />
+                        Directory Query Filters
+                      </div>
+                      <button
+                        onClick={() => {
+                          setUserSearch('');
+                          setUserRoleFilter('All');
+                          setUserDeptFilter('All');
+                          setUserClearanceFilter('All');
+                          setUserStatusFilter('All');
+                          setUserPage(1);
+                        }}
+                        className="text-[11px] text-indigo-600 hover:text-indigo-850 font-bold hover:underline transition-colors"
+                      >
+                        Reset All Filters
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+                      <div className="relative lg:col-span-2">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                        <Input
+                          placeholder="Search name, email, employee ID..."
+                          value={userSearch}
+                          onChange={(e) => {
+                            setUserSearch(e.target.value);
+                            setUserPage(1);
+                          }}
+                          className="pl-9 bg-white border-slate-250 text-xs h-9 rounded-xl text-slate-805"
+                        />
+                      </div>
+                      
+                      <div>
+                        <Select value={userRoleFilter} onValueChange={(val) => {
+                          setUserRoleFilter(val || 'All');
+                          setUserPage(1);
+                        }}>
+                          <SelectTrigger className="bg-white border-slate-250 text-xs h-9 rounded-xl text-slate-707">
+                            <SelectValue placeholder="All Roles" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white border border-slate-200 text-slate-700 text-xs max-h-[200px]">
+                            <SelectItem value="All">All Roles</SelectItem>
+                            {roles.map(r => (
+                              <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Select value={userDeptFilter} onValueChange={(val) => {
+                          setUserDeptFilter(val || 'All');
+                          setUserPage(1);
+                        }}>
+                          <SelectTrigger className="bg-white border-slate-250 text-xs h-9 rounded-xl text-slate-707">
+                            <SelectValue placeholder="All Departments" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white border border-slate-200 text-slate-700 text-xs max-h-[200px]">
+                            <SelectItem value="All">All Departments</SelectItem>
+                            {departments.map(d => (
+                              <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Select value={userStatusFilter} onValueChange={(val) => {
+                          setUserStatusFilter(val || 'All');
+                          setUserPage(1);
+                        }}>
+                          <SelectTrigger className="bg-white border-slate-250 text-xs h-9 rounded-xl text-slate-707">
+                            <SelectValue placeholder="All Statuses" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white border border-slate-200 text-slate-700 text-xs">
+                            <SelectItem value="All">All Statuses</SelectItem>
+                            <SelectItem value="Active">Active Accounts</SelectItem>
+                            <SelectItem value="Inactive">Inactive Accounts</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-200/60">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Clearance Ranks:</span>
+                      {['All', '1', '3', '4', '5', '8', '10'].map((lvl) => {
+                        const isSelected = userClearanceFilter === lvl;
                         return (
-                          <tr key={sMod.id} className="hover:bg-slate-50/50">
-                            <td className="px-4 py-3">
-                              <div className="font-semibold text-slate-800">{sMod.name}</div>
-                              <div className="text-[10px] text-slate-400 mt-0.5 font-medium">{sMod.description}</div>
-                            </td>
-                            {['read', 'create', 'write', 'delete', 'print', 'report', 'import', 'export', 'share', 'email'].map((verb) => {
-                              const checked = !!rolePerms[verb];
-                              return (
-                                <td key={verb} className="px-3 py-3 text-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => handleToggleRoleModulePermission(selectedRoleId, sMod.code, verb)}
-                                    className="w-4 h-4 text-indigo-655 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
-                                  />
-                                </td>
-                              );
-                            })}
-                          </tr>
+                          <button
+                            key={lvl}
+                            onClick={() => {
+                              setUserClearanceFilter(lvl);
+                              setUserPage(1);
+                            }}
+                            className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-slate-900 text-white border-slate-900'
+                                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
+                            }`}
+                          >
+                            {lvl === 'All' ? 'All Clearance' : `Level ${lvl}`}
+                          </button>
                         );
                       })}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
+                    </div>
+                  </div>
+
+                  {/* Calculations for pagination */}
+                  {(() => {
+                    const filteredUsers = users.filter(u => {
+                      const matchesSearch = u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
+                        u.email.toLowerCase().includes(userSearch.toLowerCase()) || 
+                        (u.employeeCode || '').toLowerCase().includes(userSearch.toLowerCase());
+                      const matchesRole = userRoleFilter === 'All' || u.roleId === userRoleFilter;
+                      const matchesDept = userDeptFilter === 'All' || u.departmentId === userDeptFilter;
+                      const matchesClearance = userClearanceFilter === 'All' || String(u.clearanceLevel) === userClearanceFilter;
+                      const matchesStatus = userStatusFilter === 'All' || (userStatusFilter === 'Active' ? u.isActive : !u.isActive);
+                      return matchesSearch && matchesRole && matchesDept && matchesClearance && matchesStatus;
+                    });
+
+                    const parsedPageSize = parseInt(userPageSize, 10) || 10;
+                    const totalPages = Math.ceil(filteredUsers.length / parsedPageSize) || 1;
+                    const activePage = userPage > totalPages ? totalPages : userPage;
+                    const startIndex = (activePage - 1) * parsedPageSize;
+                    const paginatedList = filteredUsers.slice(startIndex, startIndex + parsedPageSize);
+
+                    const getAvatarBg = (roleName: string) => {
+                      const name = (roleName || '').toLowerCase();
+                      if (name.includes('admin')) return 'bg-indigo-100 text-indigo-700 border-indigo-200';
+                      if (name.includes('manager')) return 'bg-sky-100 text-sky-700 border-sky-200';
+                      if (name.includes('payroll') || name.includes('finance')) return 'bg-rose-100 text-rose-700 border-rose-200';
+                      if (name.includes('hr') || name.includes('human')) return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+                      return 'bg-slate-100 text-slate-700 border-slate-200';
+                    };
+
+                    const getInitials = (name: string) => {
+                      const parts = (name || '').trim().split(/\s+/);
+                      if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+                      if (parts.length === 1 && parts[0]) return parts[0].slice(0, 2).toUpperCase();
+                      return 'US';
+                    };
+
+                    return (
+                      <>
+                        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50/80 border-b border-slate-200 text-[10px] uppercase font-extrabold tracking-wider text-slate-455">
+                                <th className="px-6 py-3.5">User Profile & Dept</th>
+                                <th className="px-6 py-3.5">Authentication / Email</th>
+                                <th className="px-6 py-3.5">Access Authorization</th>
+                                <th className="px-6 py-3.5">Clearance Rank</th>
+                                <th className="px-6 py-3.5">Status</th>
+                                <th className="px-6 py-3.5 text-right">Action Operations</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 text-xs">
+                              {paginatedList.map((usr) => (
+                                <tr key={usr.id} className="hover:bg-slate-50/50 transition-colors group">
+                                  <td className="px-6 py-4 font-semibold text-slate-805">
+                                    <div className="flex items-center gap-3">
+                                      <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0 border uppercase ${getAvatarBg(usr.roleName)}`}>
+                                        {getInitials(usr.name)}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <div className="font-bold text-slate-805 text-sm truncate">{usr.name}</div>
+                                        <div className="text-[10px] text-slate-400 font-semibold mt-0.5 truncate">
+                                          Dept Scope: <span className="text-slate-600">{departments.find(d => d.id === usr.departmentId)?.name || 'Global IT'}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 text-slate-550 font-medium">
+                                    <div className="flex flex-col">
+                                      <span className="text-slate-700 text-xs font-semibold">{usr.email}</span>
+                                      <span className="text-[10px] text-slate-400 font-mono mt-0.5">ID: {usr.employeeCode || '—'}</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <div className="flex flex-col items-start gap-1">
+                                      <span className="px-2.5 py-0.5 rounded-full border bg-slate-50 text-slate-700 text-[10px] font-extrabold border-slate-250/60 shadow-3xs uppercase tracking-wide">
+                                        {usr.roleName}
+                                      </span>
+                                      {usr.overrides && Object.keys(usr.overrides).length > 0 && (
+                                        <span className="bg-amber-50 text-amber-800 border border-amber-250/50 px-1.5 py-0.2 rounded text-[9px] font-bold flex items-center gap-0.5">
+                                          <Sparkles className="w-2.5 h-2.5 shrink-0" />
+                                          {Object.keys(usr.overrides).length} Custom Overrides
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    {(() => {
+                                      const lvl = usr.clearanceLevel ?? 1;
+                                      let badgeStyle = "bg-slate-50 border-slate-200 text-slate-650";
+                                      if (lvl === 10) badgeStyle = "bg-rose-50 border-rose-250 text-rose-705 font-extrabold shadow-3xs";
+                                      else if (lvl >= 7) badgeStyle = "bg-amber-50 border-amber-200 text-amber-800 font-bold";
+                                      else if (lvl >= 4) badgeStyle = "bg-indigo-50 border-indigo-200 text-indigo-700";
+
+                                      return (
+                                        <span className={`px-2.5 py-0.5 rounded-lg border text-[10px] font-semibold tracking-wider ${badgeStyle} inline-flex items-center gap-1`}>
+                                          {lvl === 10 && <Lock className="w-2.5 h-2.5" />}
+                                          {getCorporateRankLabel(lvl)}
+                                        </span>
+                                      );
+                                    })()}
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <button
+                                      onClick={() => handleToggleUserStatus(usr)}
+                                      className={`text-[10px] font-bold px-3 py-1 rounded-full border transition-all cursor-pointer shadow-3xs ${
+                                        usr.isActive
+                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-250 hover:bg-emerald-100'
+                                          : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                                      }`}
+                                    >
+                                      {usr.isActive ? 'Active' : 'Suspended'}
+                                    </button>
+                                  </td>
+                                  <td className="px-6 py-4 text-right">
+                                    <div className="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
+                                      <button
+                                        onClick={() => {
+                                          setOverrideUser(usr);
+                                          if (systemModules.length > 0) {
+                                            setOverrideModule(systemModules[0].code);
+                                          }
+                                          setOverrideAction('read');
+                                          setOverrideValue('INHERIT');
+                                          setIsOverrideModalOpen(true);
+                                        }}
+                                        className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-850 text-[10px] font-bold rounded-lg border border-amber-250 transition-all cursor-pointer shadow-3xs"
+                                        title="Configure Overrides"
+                                      >
+                                        Overrides
+                                      </button>
+                                      <button
+                                        onClick={() => handleOpenUserModal(usr)}
+                                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 transition-all cursor-pointer border border-transparent hover:border-slate-250"
+                                        title="Edit User Settings"
+                                      >
+                                        <Edit2 className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleDeleteUser(usr.id)}
+                                        className="p-1.5 rounded-lg hover:bg-red-50 text-red-500 transition-all cursor-pointer border border-transparent hover:border-red-200"
+                                        title="Delete Account"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+
+                              {paginatedList.length === 0 && (
+                                <tr>
+                                  <td colSpan={6} className="px-6 py-12 text-center text-slate-400 italic">
+                                    No personnel records match the current query criteria.
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Pagination Bar */}
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-100 text-xs">
+                          <div className="text-slate-455 font-medium">
+                            Showing <span className="font-bold text-slate-800">{startIndex + 1}</span> to{' '}
+                            <span className="font-bold text-slate-800">
+                              {Math.min(startIndex + parsedPageSize, filteredUsers.length)}
+                            </span>{' '}
+                            of <span className="font-bold text-slate-800">{filteredUsers.length}</span> personnel entries
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-slate-450 text-[11px]">Rows per page:</span>
+                              <Select
+                                value={userPageSize}
+                                onValueChange={(val) => {
+                                  setUserPageSize(val || '10');
+                                  setUserPage(1);
+                                }}
+                              >
+                                <SelectTrigger className="w-[64px] bg-white border-slate-205 text-xs h-7 rounded-lg">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="bg-white border border-slate-200 text-xs text-slate-700 min-w-[64px]">
+                                  <SelectItem value="10">10</SelectItem>
+                                  <SelectItem value="25">25</SelectItem>
+                                  <SelectItem value="50">50</SelectItem>
+                                  <SelectItem value="100">100</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => setUserPage(p => Math.max(1, p - 1))}
+                                disabled={activePage === 1}
+                                className="p-1 rounded-lg border border-slate-250 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer"
+                              >
+                                <ChevronRight className="w-3.5 h-3.5 rotate-180" />
+                              </button>
+                              <div className="px-2 font-semibold text-slate-700">
+                                Page {activePage} of {totalPages}
+                              </div>
+                              <button
+                                onClick={() => setUserPage(p => Math.min(totalPages, p + 1))}
+                                disabled={activePage === totalPages}
+                                className="p-1 rounded-lg border border-slate-250 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer"
+                              >
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {!sectionAccessDenied && activeSection === 'roles' && (
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 animate-fadeIn">
+              {/* Left Column: Searchable Roles List & Clearance Ladder */}
+              <div className="lg:col-span-1 space-y-6">
+                <Card className="bg-white border-slate-200 shadow-xs rounded-2xl overflow-hidden">
+                  <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/50 p-4">
+                    <CardTitle className="text-xs uppercase tracking-wider text-slate-400 font-extrabold flex items-center justify-between">
+                      <span>Access Role Profiles</span>
+                      <span className="bg-indigo-100 text-indigo-700 px-1.5 py-0.2 rounded text-[9px] font-bold">
+                        {roles.length} Roles
+                      </span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-3 space-y-3">
+                    {/* Role Sidebar Search */}
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                      <Input
+                        placeholder="Search roles..."
+                        value={roleSidebarSearch}
+                        onChange={(e) => setRoleSidebarSearch(e.target.value)}
+                        className="pl-8 bg-white border-slate-250 text-xs h-8 rounded-lg"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 max-h-[450px] overflow-y-auto pr-1">
+                      {roles
+                        .filter(r => r.name.toLowerCase().includes(roleSidebarSearch.toLowerCase()))
+                        .map((r) => {
+                          const isSelected = r.id === selectedRoleId;
+                          const assignedCount = users.filter(u => u.roleId === r.id).length;
+                          return (
+                            <button
+                              key={r.id}
+                              onClick={() => setSelectedRoleId(r.id)}
+                              className={`w-full text-left p-3 rounded-xl border transition-all cursor-pointer flex flex-col gap-1.5 ${
+                                isSelected
+                                  ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                                  : 'bg-white text-slate-800 border-slate-200 hover:border-slate-300'
+                              }`}
+                            >
+                              <div className="flex justify-between items-start w-full">
+                                <span className="font-bold text-xs truncate max-w-[65%]">{r.name}</span>
+                                {r.complianceBypass && (
+                                  <span className={`px-1.5 py-0.2 rounded text-[8px] font-bold shrink-0 ${
+                                    isSelected ? 'bg-amber-500 text-slate-900' : 'bg-amber-100 text-amber-800'
+                                  }`}>
+                                    Bypass
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex justify-between items-center w-full text-[10px] pt-0.5">
+                                <span className={`font-bold ${isSelected ? 'text-indigo-305' : 'text-indigo-650'}`}>
+                                  {assignedCount} Assigned
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                    </div>
+
+                    <Button
+                      onClick={() => handleOpenRoleModal()}
+                      className="w-full bg-white hover:bg-slate-50 border border-slate-250 text-slate-700 font-bold text-xs h-8 rounded-xl flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Create Custom Role
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Right Column: Active Role settings & accordion permission groups */}
+              <div className="lg:col-span-3 space-y-6">
+                {(() => {
+                  const activeRole = roles.find(r => r.id === selectedRoleId);
+                  if (!activeRole) {
+                    return (
+                      <Card className="bg-white border-slate-200 shadow-xs rounded-2xl p-12 text-center text-slate-400 italic">
+                        Select a role profile from the sidebar to inspect authorization rules.
+                      </Card>
+                    );
+                  }
+
+                  const usersWithRole = users.filter(u => u.roleId === activeRole.id);
+
+                  // Group systemModules by Category dynamically
+                  const modulesByCategory = systemModules.reduce((acc, m) => {
+                    const cat = m.category || 'Other Modules';
+                    if (!acc[cat]) acc[cat] = [];
+                    acc[cat].push(m);
+                    return acc;
+                  }, {} as Record<string, typeof systemModules>);
+
+                  // Batch toggle functions
+                  const handleCategoryBatchToggle = async (categoryName: string, actionVerb: string | 'all', grant: boolean) => {
+                    const updatedPermissions = { ...activeRole.permissions };
+                    const targetModules = modulesByCategory[categoryName] || [];
+                    targetModules.forEach(m => {
+                      if (!updatedPermissions[m.code]) {
+                        updatedPermissions[m.code] = {
+                          read: false, create: false, write: false, delete: false,
+                          print: false, report: false, import: false, export: false,
+                          share: false, email: false
+                        };
+                      }
+                      if (actionVerb === 'all') {
+                        ['read', 'create', 'write', 'delete', 'print', 'report', 'import', 'export', 'share', 'email'].forEach(verb => {
+                          updatedPermissions[m.code][verb] = grant;
+                        });
+                      } else {
+                        updatedPermissions[m.code][actionVerb] = grant;
+                      }
+                    });
+
+                    try {
+                      const res = await fetch('/api/core/roles', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: activeRole.id, permissions: updatedPermissions })
+                      });
+                      const saved = await res.json();
+                      setRoles(roles.map(r => r.id === activeRole.id ? saved : r));
+                      triggerAlert(`Batch updated ${categoryName} authorization rules`);
+                    } catch (err) {
+                      console.error(err);
+                    }
+                  };
+
+                  const handleRowBatchToggle = async (moduleCode: string, grant: boolean) => {
+                    const updatedPermissions = { ...activeRole.permissions };
+                    updatedPermissions[moduleCode] = {
+                      read: grant, create: grant, write: grant, delete: grant,
+                      print: grant, report: grant, import: grant, export: grant,
+                      share: grant, email: grant
+                    };
+
+                    try {
+                      const res = await fetch('/api/core/roles', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: activeRole.id, permissions: updatedPermissions })
+                      });
+                      const saved = await res.json();
+                      setRoles(roles.map(r => r.id === activeRole.id ? saved : r));
+                      triggerAlert(`Batch modified permissions for module: ${moduleCode}`);
+                    } catch (err) {
+                      console.error(err);
+                    }
+                  };
+
+                  return (
+                    <>
+                      {/* Active Role Info Board */}
+                      <Card className="bg-white border-slate-200 shadow-xs rounded-2xl overflow-hidden">
+                        <CardHeader className="pb-4 border-b border-slate-100 bg-slate-50/50 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-extrabold text-slate-900 text-lg">{activeRole.name}</span>
+                              {activeRole.complianceBypass && (
+                                <span className="bg-amber-55 text-amber-800 border border-amber-200 px-2 py-0.5 rounded text-[10px] font-extrabold tracking-wide uppercase">
+                                  Compliance Bypass Active
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Button
+                              onClick={() => handleOpenRoleModal(activeRole)}
+                              className="bg-white hover:bg-slate-50 border border-slate-250 text-slate-755 font-bold text-xs h-8 px-3 rounded-lg flex items-center gap-1 shadow-3xs cursor-pointer"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                              Edit Config
+                            </Button>
+                            <Button
+                              onClick={() => handleDeleteRole(activeRole.id)}
+                              className="bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-650 font-bold text-xs h-8 px-3 rounded-lg flex items-center gap-1 shadow-3xs cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Delete Role
+                            </Button>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="p-6">
+                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-50 p-4 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500">
+                            <div className="flex items-center gap-4 flex-wrap">
+                              <span>Assigned Personnel: <strong className="text-slate-805">{usersWithRole.length} Members</strong></span>
+                            </div>
+
+                            {/* Assigned users inline pill registry */}
+                            {usersWithRole.length > 0 && (
+                              <div className="flex items-center -space-x-2.5 overflow-hidden">
+                                {usersWithRole.slice(0, 5).map(u => (
+                                  <div
+                                    key={u.id}
+                                    className="w-7 h-7 rounded-full border border-white bg-slate-900 text-white font-extrabold text-[8px] flex items-center justify-center shadow-3xs cursor-help uppercase"
+                                    title={`${u.name} (${u.employeeCode})`}
+                                  >
+                                    {u.name.slice(0, 2)}
+                                  </div>
+                                ))}
+                                {usersWithRole.length > 5 && (
+                                  <div className="w-7 h-7 rounded-full border border-white bg-slate-100 text-slate-605 text-[8px] font-bold flex items-center justify-center shadow-3xs">
+                                    +{usersWithRole.length - 5}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* Real-time Security Simulation Panel */}
+                      <Card className="bg-white border-slate-200 shadow-xs rounded-2xl overflow-hidden">
+                        <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/50 p-4">
+                          <CardTitle className="text-xs uppercase tracking-wider text-slate-455 font-extrabold flex items-center gap-1.5">
+                            <Shield className="w-4 h-4 text-indigo-650" />
+                            Security Simulator: Real-Time Role Access Policy Checker
+                          </CardTitle>
+                          <CardDescription className="text-[11px] text-slate-400 mt-1">
+                            Evaluates how the 5-Pillar security engine processes critical data sub-modules for this role.
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs bg-slate-50/30">
+                           {(() => {
+                            const cPerms = activeRole.permissions || {};
+                            const hasBypass = activeRole.complianceBypass === true;
+
+                            const checkAccess = (moduleCode: string, verb: string, reqClearance: number, reqBypass: boolean = false) => {
+                              const hasModulePerm = !!cPerms[moduleCode]?.[verb];
+
+                              let allowed = false;
+                              const reasons: string[] = [];
+
+                              if (!hasModulePerm) {
+                                reasons.push(`Role lacks '${moduleCode}' '${verb}' capability`);
+                                allowed = false;
+                              } else {
+                                reasons.push(`Role has capability`);
+                                if (reqClearance > 1) {
+                                  if (reqBypass && hasBypass) {
+                                    reasons.push(`Compliance Auditor Bypass Active`);
+                                    allowed = true;
+                                  } else {
+                                    reasons.push(`Requires User Rank ${reqClearance}+`);
+                                    allowed = true;
+                                  }
+                                } else {
+                                  allowed = true;
+                                }
+                              }
+
+                              return { allowed, reason: reasons.join(' • ') };
+                            };
+
+                            const checks = [
+                              {
+                                name: "Access Core Settings",
+                                desc: "Navigate to system configurations module and view basic tenant parameters.",
+                                mod: "core_settings",
+                                verb: "read",
+                                minCl: 1,
+                                reqBypass: false
+                              },
+                              {
+                                name: "Read Confidential Payroll Salaries",
+                                desc: "Inspect employee basic salary registers (Confidential Classification). Requires Rank 6+ or Compliance Bypass.",
+                                mod: "payroll_registers",
+                                verb: "read",
+                                minCl: 6,
+                                reqBypass: true
+                              },
+                              {
+                                name: "Export Statutory Reports",
+                                desc: "Export Philippine government statutory contribution reports (BIR, SSS). Requires Export capability.",
+                                mod: "payroll_registers",
+                                verb: "export",
+                                minCl: 1,
+                                reqBypass: false
+                              },
+                              {
+                                name: "Bypass Data Privacy Boundaries",
+                                desc: "Auditing compliance verification on restricted logs. Requires External Auditor Bypass.",
+                                mod: "core_settings",
+                                verb: "read",
+                                minCl: 8,
+                                reqBypass: true
+                              }
+                            ];
+
+                            return checks.map((chk) => {
+                              const res = checkAccess(chk.mod, chk.verb, chk.minCl, chk.reqBypass);
+                              const isAllowed = res.allowed;
+
+                              return (
+                                <div key={chk.name} className={`p-3 rounded-xl border flex flex-col justify-between gap-2.5 transition-all ${
+                                  isAllowed 
+                                    ? 'bg-emerald-50/30 border-emerald-200/50 shadow-3xs' 
+                                    : 'bg-white border-slate-200 shadow-3xs'
+                                }`}>
+                                  <div className="space-y-1">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <strong className="text-slate-800 font-bold text-xs">{chk.name}</strong>
+                                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase shrink-0 border ${
+                                        isAllowed 
+                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-250/50' 
+                                          : 'bg-rose-50 text-rose-605 border-rose-200/50'
+                                      }`}>
+                                        {isAllowed ? 'Allowed' : 'Blocked'}
+                                      </span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 leading-normal">{chk.desc}</p>
+                                  </div>
+                                  <div className="flex items-center justify-between text-[9px] font-semibold pt-2 border-t border-slate-100">
+                                    <span className="text-slate-400">
+                                      Req: L{chk.minCl} Cl. {chk.reqBypass ? '(Bypassable)' : ''}
+                                    </span>
+                                    <span className={`font-bold truncate max-w-[65%] ${isAllowed ? 'text-emerald-700' : 'text-rose-600'}`} title={res.reason}>
+                                      {res.reason}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </CardContent>
+                      </Card>
+
+                      {/* Permissions Matrix with Collapsible Groups */}
+                      <Card className="bg-white border-slate-200 shadow-xs rounded-2xl overflow-hidden">
+                        <CardHeader className="pb-4 border-b border-slate-100 bg-slate-50/50 px-6 py-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                          <div>
+                            <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                              <span>Modular Permissions Registry Matrix</span>
+                              <span className="bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-violet-200/50">
+                                {systemModules.length} Modules
+                              </span>
+                            </CardTitle>
+                            <CardDescription className="text-xs text-slate-455 mt-1">Configure capability grants for specific resource controllers across all system sections.</CardDescription>
+                          </div>
+
+                          <div className="relative w-full sm:w-64">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                            <Input
+                              placeholder="Search modules..."
+                              value={roleSearchFilter}
+                              onChange={(e) => setRoleSearchFilter(e.target.value)}
+                              className="pl-8 bg-white border-slate-250 text-xs h-8 rounded-lg text-slate-805"
+                            />
+                          </div>
+                        </CardHeader>
+                        
+                        <CardContent className="p-0 divide-y divide-slate-200">
+                          {Object.keys(modulesByCategory).map((catName) => {
+                            const catModules = modulesByCategory[catName].filter(m =>
+                              m.name.toLowerCase().includes(roleSearchFilter.toLowerCase()) ||
+                              m.code.toLowerCase().includes(roleSearchFilter.toLowerCase())
+                            );
+
+                            if (catModules.length === 0) return null;
+
+                            const isCollapsed = collapsedCategories[catName] === true;
+                            const toggleCategory = () => {
+                              setCollapsedCategories(prev => ({ ...prev, [catName]: !isCollapsed }));
+                            };
+
+                            return (
+                              <div key={catName} className="flex flex-col">
+                                {/* Accordion Header */}
+                                <div className="bg-slate-50/60 hover:bg-slate-50 px-6 py-3 flex items-center justify-between cursor-pointer border-b border-slate-150 transition-colors" onClick={toggleCategory}>
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="p-1 rounded bg-indigo-50 text-indigo-650 shrink-0">
+                                      <FolderOpen className="w-3.5 h-3.5" />
+                                    </span>
+                                    <span className="font-bold text-xs text-slate-800 truncate">{catName} Group</span>
+                                    <span className="text-[10px] font-bold text-slate-400 px-1.5 py-0.2 rounded-full bg-slate-200/50 shrink-0">
+                                      {catModules.length} Modules
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center gap-4 shrink-0" onClick={e => e.stopPropagation()}>
+                                    {/* Batch grant/revoke tools */}
+                                    <div className="flex items-center gap-1.5 text-[10px] font-bold">
+                                      <span className="text-slate-400 uppercase tracking-wide mr-1 hidden sm:inline">Category Tools:</span>
+                                      <button
+                                        onClick={() => handleCategoryBatchToggle(catName, 'read', true)}
+                                        className="px-2 py-0.5 rounded bg-white hover:bg-slate-105 text-indigo-600 border border-slate-250"
+                                      >
+                                        Allow Read
+                                      </button>
+                                      <button
+                                        onClick={() => handleCategoryBatchToggle(catName, 'all', true)}
+                                        className="px-2 py-0.5 rounded bg-white hover:bg-slate-105 text-emerald-705 border border-slate-250"
+                                      >
+                                        Allow All
+                                      </button>
+                                      <button
+                                        onClick={() => handleCategoryBatchToggle(catName, 'all', false)}
+                                        className="px-2 py-0.5 rounded bg-white hover:bg-slate-105 text-rose-600 border border-slate-250"
+                                      >
+                                        Deny All
+                                      </button>
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={toggleCategory}
+                                      className="p-1 rounded hover:bg-slate-200 text-slate-500 cursor-pointer"
+                                    >
+                                      <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isCollapsed ? 'rotate-180' : ''}`} />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Accordion Content Table */}
+                                {!isCollapsed && (
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse">
+                                      <thead>
+                                        <tr className="bg-slate-50/20 border-b border-slate-150 text-[9px] uppercase font-extrabold tracking-wider text-slate-455">
+                                          <th className="px-6 py-2.5 min-w-[200px]">Module Controller</th>
+                                          {['read', 'create', 'write', 'delete', 'print', 'report', 'import', 'export', 'share', 'email'].map((verb) => (
+                                            <th key={verb} className="px-3 py-2.5 text-center min-w-[65px] capitalize font-extrabold">
+                                              {verb}
+                                            </th>
+                                          ))}
+                                          <th className="px-4 py-2.5 text-right min-w-[100px]">Quick Row Actions</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100 text-xs">
+                                        {catModules.map((sMod) => {
+                                          const rolePerms = activeRole.permissions?.[sMod.code] || {};
+                                          return (
+                                            <tr key={sMod.id} className="hover:bg-slate-50/30 transition-colors">
+                                              <td className="px-6 py-3">
+                                                <div className="font-bold text-slate-808 text-[12px]">{sMod.name}</div>
+                                                <div className="text-[10px] text-slate-400 mt-0.5 font-medium">{sMod.description}</div>
+                                              </td>
+                                              {['read', 'create', 'write', 'delete', 'print', 'report', 'import', 'export', 'share', 'email'].map((verb) => {
+                                                const checked = !!rolePerms[verb];
+                                                return (
+                                                  <td key={verb} className="px-3 py-3 text-center">
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={checked}
+                                                      onChange={() => handleToggleRoleModulePermission(activeRole.id, sMod.code, verb)}
+                                                      className="w-4 h-4 text-indigo-655 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer transition-transform duration-100 hover:scale-110"
+                                                    />
+                                                  </td>
+                                                );
+                                              })}
+                                              <td className="px-4 py-3 text-right">
+                                                <div className="flex items-center justify-end gap-1 text-[9px] font-bold">
+                                                  <button
+                                                    onClick={() => handleRowBatchToggle(sMod.code, true)}
+                                                    className="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-705 border border-emerald-200 rounded"
+                                                  >
+                                                    Grant All
+                                                  </button>
+                                                  <button
+                                                    onClick={() => handleRowBatchToggle(sMod.code, false)}
+                                                    className="px-1.5 py-0.5 bg-rose-50 hover:bg-rose-100 text-rose-650 border border-rose-200 rounded"
+                                                  >
+                                                    Clear
+                                                  </button>
+                                                </div>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </CardContent>
+                      </Card>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
           )}
 
         </main>
@@ -2817,6 +4428,48 @@ function CoreSetupContent() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="dept-type" className="text-xs text-slate-700">Unit Type</Label>
+                <Select value={deptForm.type} onValueChange={(val) => setDeptForm({ ...deptForm, type: val || 'DEPARTMENT' })}>
+                  <SelectTrigger className="bg-slate-50 border-slate-200 text-xs h-8">
+                    <SelectValue>
+                      {deptForm.type === 'DIVISION' ? 'Division' :
+                       deptForm.type === 'DEPARTMENT' ? 'Department' :
+                       deptForm.type === 'SECTION' ? 'Section' :
+                       deptForm.type === 'SUBSECTION' ? 'Subsection' : 'Department'}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border border-slate-200 text-slate-700 text-xs">
+                    <SelectItem value="DIVISION">Division</SelectItem>
+                    <SelectItem value="DEPARTMENT">Department</SelectItem>
+                    <SelectItem value="SECTION">Section</SelectItem>
+                    <SelectItem value="SUBSECTION">Subsection</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="dept-parent" className="text-xs text-slate-700">Parent Unit</Label>
+                <Select value={deptForm.parentId || 'none'} onValueChange={(val) => setDeptForm({ ...deptForm, parentId: val === 'none' ? null : val })}>
+                  <SelectTrigger className="bg-slate-50 border-slate-200 text-xs h-8">
+                    <SelectValue>
+                      {departments.find(d => d.id === deptForm.parentId)?.name || "None (Root)"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border border-slate-200 text-slate-700 text-xs">
+                    <SelectItem value="none">None (Root)</SelectItem>
+                    {departments
+                      .filter(d => !editingDept || d.id !== editingDept.id)
+                      .map(d => (
+                        <SelectItem key={d.id} value={d.id}>{d.name} ({d.type})</SelectItem>
+                      ))
+                    }
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {activeModules.includes('HUMAN_RESOURCES') ? (
@@ -3120,6 +4773,46 @@ function CoreSetupContent() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="usr-clearance" className="text-xs text-slate-700 font-semibold">Corporate Hierarchy Rank</Label>
+                <Select value={userForm.clearanceLevel} onValueChange={(val) => setUserForm({ ...userForm, clearanceLevel: val || '1' })}>
+                  <SelectTrigger id="usr-clearance" className="bg-slate-50 border-slate-200 text-xs h-8 text-slate-900">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border border-slate-200 text-slate-700 text-xs max-h-[160px]">
+                    <SelectItem value="1">Rank 1: File Request (Non-Employee)</SelectItem>
+                    <SelectItem value="2">Rank 2: File Request (Intern)</SelectItem>
+                    <SelectItem value="3">Rank 3: File Request (Rank & File)</SelectItem>
+                    <SelectItem value="4">Rank 4: Verify Request (Supervisor)</SelectItem>
+                    <SelectItem value="5">Rank 5: Recommend Approval (Manager)</SelectItem>
+                    <SelectItem value="6">Rank 6: Recommend Approval (Department Head)</SelectItem>
+                    <SelectItem value="7">Rank 7: Recommend Approval (Division Head)</SelectItem>
+                    <SelectItem value="8">Rank 8: Approve Request (Director)</SelectItem>
+                    <SelectItem value="9">Rank 9: Approve Request (Executive)</SelectItem>
+                    <SelectItem value="10">Rank 10: Approve Request (President / CEO)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="usr-dept" className="text-xs text-slate-700 font-semibold">Department Assignment</Label>
+                <Select value={userForm.departmentId} onValueChange={(val) => setUserForm({ ...userForm, departmentId: val === 'none' ? '' : (val || '') })}>
+                  <SelectTrigger id="usr-dept" className="bg-slate-50 border-slate-200 text-xs h-8 text-slate-900">
+                    <SelectValue placeholder="Global / All Departments">
+                      {departments.find(d => d.id === userForm.departmentId)?.name || "Global / All Departments"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border border-slate-200 text-slate-700 text-xs max-h-[160px]">
+                    <SelectItem value="none">Global / All Departments</SelectItem>
+                    {departments.map(d => (
+                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <div className="space-y-1">
               <Label htmlFor="usr-employee-code" className="text-xs text-slate-700">Link Employee Code (Optional)</Label>
               <Input
@@ -3165,14 +4858,18 @@ function CoreSetupContent() {
                 className="bg-slate-50 border-slate-200 text-xs py-1 h-8 text-slate-900"
               />
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="role-description" className="text-xs text-slate-700">Description</Label>
-              <textarea
-                id="role-description"
-                value={roleForm.description}
-                onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })}
-                placeholder="Write a brief overview of this role's purpose..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:bg-white focus:outline-none min-h-[60px] text-slate-800"
+
+            <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg">
+              <div className="space-y-0.5">
+                <Label htmlFor="role-bypass" className="text-xs text-slate-700 font-bold cursor-pointer">Compliance Bypass</Label>
+                <p className="text-[10px] text-slate-400">Allows External Auditor role to audit logs and bypass rank checks.</p>
+              </div>
+              <input
+                type="checkbox"
+                id="role-bypass"
+                checked={!!roleForm.complianceBypass}
+                onChange={(e) => setRoleForm({ ...roleForm, complianceBypass: e.target.checked })}
+                className="w-4 h-4 text-indigo-655 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
               />
             </div>
             <DialogFooter className="pt-3 border-t border-slate-100 flex gap-2 justify-end">
@@ -3199,6 +4896,9 @@ function CoreSetupContent() {
             </CardDescription>
           </DialogHeader>
           <form onSubmit={handleSaveOverride} className="space-y-4 py-2">
+            <div className="bg-sky-50/70 border border-sky-100 p-3 rounded-xl text-[11px] text-sky-800 leading-relaxed font-medium">
+              💡 <strong>How overrides work:</strong> These settings explicitly grant (<span className="text-emerald-700 font-semibold">ALLOW</span>) or block (<span className="text-rose-600 font-semibold">DENY</span>) specific actions for this individual, bypassing their base role. Select <strong>INHERIT</strong> to restore role defaults.
+            </div>
             <div className="space-y-1">
               <Label htmlFor="ov-module" className="text-xs text-slate-700">Module / Document Type</Label>
               <Select value={overrideModule} onValueChange={(val) => setOverrideModule(val || '')}>
