@@ -71,10 +71,10 @@ export async function requireAccess(opts: RequireAccessOptions): Promise<{ autho
     try {
       const dbUser = await prisma.user.findUnique({
         where: { id: userId },
-        select: { actionLevel: true, departmentId: true },
+        select: { clearanceLevel: true, departmentId: true },
       });
       if (dbUser) {
-        userClearance = dbUser.actionLevel;
+        userClearance = dbUser.clearanceLevel;
         userDepartmentId = dbUser.departmentId;
       }
     } catch (err) {
