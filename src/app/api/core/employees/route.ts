@@ -52,38 +52,14 @@ export async function GET(request: NextRequest) {
       orderBy: { person: { firstName: 'asc' } },
     });
     
-    if (employees.length > 0) {
-      return NextResponse.json(employees.map((e: any) => {
-        return {
-          id: e.id,
-          name: `${e.person.firstName} ${e.person.lastName}`,
-          departmentId: e.departmentId,
-          compensation: null  // compensation table not in schema yet
-        };
-      }));
-    }
-    
-    // Scoped filtering on Mock Data
-    let filteredMock = mockEmployees;
-    if (ctx.dataScope === 'OWN') {
-      filteredMock = mockEmployees.filter(e => e.id === 'EMP-001'); // Treat EMP-001 as OWN for demo
-    } else if (ctx.dataScope === 'DEPARTMENT') {
-      const allowedDepts = [ctx.departmentId, ...ctx.scopeIds].filter(Boolean);
-      if (allowedDepts.length > 0) {
-        filteredMock = mockEmployees.filter(e => allowedDepts.includes(e.departmentId));
-      }
-    }
-
-    // Apply compensation redaction on mock data
-    const redactedMock = filteredMock.map(e => {
-      const comp = e.compensation ? redactCompensation(e.compensation, ctx) : null;
+    return NextResponse.json(employees.map((e: any) => {
       return {
-        ...e,
-        compensation: comp
+        id: e.id,
+        name: `${e.person.firstName} ${e.person.lastName}`,
+        departmentId: e.departmentId,
+        compensation: null  // compensation table not in schema yet
       };
-    });
-
-    return NextResponse.json(redactedMock);
+    }));
   } catch (error) {
     console.warn('Prisma database connection failed. Falling back to scoped mock employees list.', error);
     

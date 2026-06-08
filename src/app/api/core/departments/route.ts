@@ -22,20 +22,17 @@ export async function GET() {
       orderBy: { name: 'asc' },
     });
     
-    if (departments.length > 0) {
-      return NextResponse.json(departments.map((d: any) => ({
-        id: d.id,
-        name: d.name,
-        branchId: d.branchId,
-        branchName: d.branch?.name || 'Unassigned',
-        managerId: d.managerId,
-        managerName: d.manager?.person ? `${d.manager.person.firstName} ${d.manager.person.lastName}` : 'Unassigned',
-        staffCount: d.employees.length,
-        parentId: d.parentId || null,
-        type: d.type || 'DEPARTMENT',
-      })));
-    }
-    return NextResponse.json(mockDepartments);
+    return NextResponse.json(departments.map((d: any) => ({
+      id: d.id,
+      name: d.name,
+      branchId: d.branchId,
+      branchName: d.branch?.name || 'Unassigned',
+      managerId: d.managerId,
+      managerName: d.manager?.person ? `${d.manager.person.firstName} ${d.manager.person.lastName}` : 'Unassigned',
+      staffCount: d.employees.length,
+      parentId: d.parentId || null,
+      type: d.type || 'DEPARTMENT',
+    })));
   } catch (error) {
     console.warn('Prisma database connection failed. Falling back to mock departments.');
     return NextResponse.json(mockDepartments);

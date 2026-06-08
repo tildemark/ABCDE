@@ -136,25 +136,22 @@ export async function GET() {
       orderBy: { name: 'asc' },
     });
     
-    if (branches.length > 0) {
-      return NextResponse.json(branches.map((b: any) => ({
-        id: b.id,
-        name: b.name,
-        parentId: b.parentId || null,
-        region: b.region,
-        isHeadquarters: b.isHeadquarters,
-        address: b.address || 'Philippine Office Location Address',
-        registeredTin: b.registeredTin || '',
-        sssId: b.sssId || '',
-        philhealthId: b.philhealthId || '',
-        pagibigId: b.pagibigId || '',
-        birBranchCode: b.birBranchCode || '',
-        rdoCode: b.rdoCode || '',
-        entityType: b.entityType || 'BRANCH',
-        createdAt: b.createdAt,
-      })));
-    }
-    return NextResponse.json(mockBranches);
+    return NextResponse.json(branches.map((b: any) => ({
+      id: b.id,
+      name: b.name,
+      parentId: b.parentId || null,
+      region: b.region,
+      isHeadquarters: b.isHeadquarters,
+      address: b.address || 'Philippine Office Location Address',
+      registeredTin: b.registeredTin || '',
+      sssId: b.sssId || '',
+      philhealthId: b.philhealthId || '',
+      pagibigId: b.pagibigId || '',
+      birBranchCode: b.birBranchCode || '',
+      rdoCode: b.rdoCode || '',
+      entityType: b.entityType || 'BRANCH',
+      createdAt: b.createdAt,
+    })));
   } catch (error) {
     console.warn('Prisma database connection failed. Falling back to mock branches.');
     return NextResponse.json(mockBranches);

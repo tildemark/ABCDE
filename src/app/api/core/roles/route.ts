@@ -67,32 +67,29 @@ export async function GET() {
       orderBy: { name: 'asc' }
     });
 
-    if (roles.length > 0) {
-      return NextResponse.json(roles.map((r: any) => {
-        const permMap: any = {};
-        r.rolePermissions.forEach((p: any) => {
-          permMap[p.systemModule.code] = {
-            read: p.canRead,
-            create: p.canCreate,
-            write: p.canWrite,
-            delete: p.canDelete,
-            print: p.canPrint,
-            report: p.canReport,
-            import: p.canImport,
-            export: p.canExport,
-            share: p.canShare,
-            email: p.canEmail,
-          };
-        });
-        return {
-          id: r.id,
-          name: r.name,
-          complianceBypass: false,  // field not in schema — default to false
-          permissions: permMap
+    return NextResponse.json(roles.map((r: any) => {
+      const permMap: any = {};
+      r.rolePermissions.forEach((p: any) => {
+        permMap[p.systemModule.code] = {
+          read: p.canRead,
+          create: p.canCreate,
+          write: p.canWrite,
+          delete: p.canDelete,
+          print: p.canPrint,
+          report: p.canReport,
+          import: p.canImport,
+          export: p.canExport,
+          share: p.canShare,
+          email: p.canEmail,
         };
-      }));
-    }
-    return NextResponse.json(mockRoles);
+      });
+      return {
+        id: r.id,
+        name: r.name,
+        complianceBypass: false,  // field not in schema — default to false
+        permissions: permMap
+      };
+    }));
   } catch (error) {
     console.warn('Prisma database connection failed. Falling back to mock roles matrix.');
     return NextResponse.json(mockRoles);

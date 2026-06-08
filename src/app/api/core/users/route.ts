@@ -40,51 +40,39 @@ export async function GET() {
       orderBy: { loginEmail: 'asc' }
     });
 
-    if (users.length > 0) {
-      return NextResponse.json(users.map((u: any) => {
-        const overridesMap: any = {};
-        u.userOverrides.forEach((ov: any) => {
-          if (!overridesMap[ov.systemModule.code]) {
-            overridesMap[ov.systemModule.code] = {};
-          }
-          overridesMap[ov.systemModule.code][ov.action] = ov.isAllowed;
-        });
-        return {
-          id: u.id,
-          personId: u.personId,
-          name: `${u.person.firstName} ${u.person.lastName}`,
-          email: u.loginEmail,
-          isActive: u.isActive,
-          roleId: u.roleId,
-          roleName: u.role?.name || 'No Role Assigned',
-          clearanceLevel: u.clearanceLevel,
-          departmentId: u.departmentId,
-          employeeCode: u.person.employee?.employeeCode || 'N/A',
-          overrides: overridesMap,
-          roleAssignments: u.roleAssignments.map((ra: any) => ({
-            id: ra.id,
-            userId: ra.userId,
-            roleId: ra.roleId,
-            roleName: ra.role?.name,
-            roleLevel: ra.role?.level ?? 4,
-            scopeType: ra.scopeType,
-            scopeId: ra.scopeId,
-            validFrom: ra.validFrom,
-            validUntil: ra.validUntil
-          }))
-        };
-      }));
-    }
-
-    // Map mockUsers to include mock assignments matching their userId
-    const mappedMock = mockUsers.map(u => {
-      const uAssignments = mockAssignments.filter(a => a.userId === u.id);
+    return NextResponse.json(users.map((u: any) => {
+      const overridesMap: any = {};
+      u.userOverrides.forEach((ov: any) => {
+        if (!overridesMap[ov.systemModule.code]) {
+          overridesMap[ov.systemModule.code] = {};
+        }
+        overridesMap[ov.systemModule.code][ov.action] = ov.isAllowed;
+      });
       return {
-        ...u,
-        roleAssignments: uAssignments
+        id: u.id,
+        personId: u.personId,
+        name: `${u.person.firstName} ${u.person.lastName}`,
+        email: u.loginEmail,
+        isActive: u.isActive,
+        roleId: u.roleId,
+        roleName: u.role?.name || 'No Role Assigned',
+        clearanceLevel: u.clearanceLevel,
+        departmentId: u.departmentId,
+        employeeCode: u.person.employee?.employeeCode || 'N/A',
+        overrides: overridesMap,
+        roleAssignments: u.roleAssignments.map((ra: any) => ({
+          id: ra.id,
+          userId: ra.userId,
+          roleId: ra.roleId,
+          roleName: ra.role?.name,
+          roleLevel: ra.role?.level ?? 4,
+          scopeType: ra.scopeType,
+          scopeId: ra.scopeId,
+          validFrom: ra.validFrom,
+          validUntil: ra.validUntil
+        }))
       };
-    });
-    return NextResponse.json(mappedMock);
+    }));
   } catch (error) {
     console.warn('Prisma database connection failed. Falling back to mock users with overrides.');
     const mappedMock = mockUsers.map(u => {
