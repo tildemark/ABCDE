@@ -16,8 +16,8 @@ const mockEmployees = [
 export async function GET(request: NextRequest) {
   // Extract user identifiers from session headers/cookies (Fat Identity)
   // Since next-auth is configured in standard Next.js, we check for custom session headers or a default mock user for dev
-  const tenantId = request.headers.get('x-tenant-id') || 't1-uuid';
-  const userId = request.headers.get('x-user-id') || 'u1-uuid'; // Default to admin for dev Fallback
+  const tenantId = request.headers.get('x-tenant-id') || 'de305d54-75b4-431b-adb2-eb6b9e546014';
+  const userId = request.headers.get('x-user-id') || 'f2000000-0000-0000-0000-000000000002';
 
   // Evaluate the security check
   const access = await requireAccess({

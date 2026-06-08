@@ -118,8 +118,7 @@ export async function PATCH(request: NextRequest) {
             rdoCode,
             companyType,
             parentTenantId: parentTenantId || null,
-            permissionInheritance,
-            crossCompanyAccess,
+            // permissionInheritance & crossCompanyAccess not in schema yet
           },
         });
         
@@ -140,8 +139,7 @@ export async function PATCH(request: NextRequest) {
             rdoCode,
             companyType,
             parentTenantId: parentTenantId || null,
-            permissionInheritance: permissionInheritance || 'STRICT',
-            crossCompanyAccess: crossCompanyAccess || 'RESTRICTED',
+            // permissionInheritance & crossCompanyAccess not in schema yet
           },
         });
         return NextResponse.json({

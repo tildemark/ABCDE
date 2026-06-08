@@ -169,7 +169,7 @@ function CoreSetupContent() {
   const activeSection = (sectionParam || 'company') as 'profile' | 'company' | 'departments' | 'users' | 'roles' | 'settings' | 'logs' | 'licensing' | 'privacy' | 'workflows';
 
   const companyTab = (searchParams.get('tab') || 'metadata') as 'metadata' | 'branches' | 'departments';
-  const currentUserId = searchParams.get('userId') || 'usr-super-admin';
+  const currentUserId = searchParams.get('userId') || 'f2000000-0000-0000-0000-000000000002';
 
   const setActiveSection = (sec: string) => {
     router.push(`/core?section=${sec}`);
@@ -384,7 +384,7 @@ function CoreSetupContent() {
   const [consentSearch, setConsentSearch] = useState('');
 
   // 5-Pillar Access Sandbox States
-  const [sandboxViewerId, setSandboxViewerId] = useState('usr-hr-mgr');
+  const [sandboxViewerId, setSandboxViewerId] = useState('f3000000-0000-0000-0000-000000000003');
   const [sandboxRecordId, setSandboxRecordId] = useState('rec-a');
   const [sandboxConsentActive, setSandboxConsentActive] = useState(true);
   const [sandboxFormConsentAttached, setSandboxFormConsentAttached] = useState(false);
@@ -1251,11 +1251,11 @@ function CoreSetupContent() {
               }}
               className="bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-700 font-bold focus:outline-none cursor-pointer"
             >
-              <option value="usr-ceo">CEO Boss (Rank 10 / STANDARD)</option>
-              <option value="usr-super-admin">IT Admin (Rank 8 / SUPER_ADMIN)</option>
-              <option value="usr-hr-mgr">HR Manager (Rank 6 / ADMIN)</option>
-              <option value="usr-hr-spec">HR Specialist (Rank 3 / STANDARD)</option>
-              <option value="usr-auditor">Auditor (Rank 4 / STANDARD + Bypass)</option>
+              <option value="f1000000-0000-0000-0000-000000000001">CEO Boss (Rank 10 / STANDARD)</option>
+              <option value="f2000000-0000-0000-0000-000000000002">IT Admin (Rank 8 / SUPER_ADMIN)</option>
+              <option value="f3000000-0000-0000-0000-000000000003">HR Manager (Rank 6 / ADMIN)</option>
+              <option value="f4000000-0000-0000-0000-000000000004">HR Specialist (Rank 3 / STANDARD)</option>
+              <option value="f5000000-0000-0000-0000-000000000005">Auditor (Rank 4 / STANDARD + Bypass)</option>
             </select>
           </div>
           <div className="w-8 h-8 rounded-full overflow-hidden border border-slate-200">
@@ -2781,11 +2781,11 @@ function CoreSetupContent() {
                           onChange={(e) => setSandboxViewerId(e.target.value)}
                           className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-semibold focus:bg-white text-slate-800"
                         >
-                          <option value="usr-ceo">CEO Boss (Rank 10 - President/CEO / STANDARD Software Role)</option>
-                          <option value="usr-super-admin">System Admin (Rank 8 - Director / SUPER_ADMIN Software Role)</option>
-                          <option value="usr-hr-mgr">HR Manager (Rank 6 - Department Head / ADMIN Software Role)</option>
-                          <option value="usr-hr-spec">HR Specialist (Rank 3 - Rank & File / STANDARD Software Role)</option>
-                          <option value="usr-auditor">External Compliance Auditor (Rank 4 - Supervisor / STANDARD Software Role + Compliance Bypass)</option>
+                          <option value="f1000000-0000-0000-0000-000000000001">CEO Boss (Rank 10 - President/CEO / STANDARD Software Role)</option>
+                          <option value="f2000000-0000-0000-0000-000000000002">System Admin (Rank 8 - Director / SUPER_ADMIN Software Role)</option>
+                          <option value="f3000000-0000-0000-0000-000000000003">HR Manager (Rank 6 - Department Head / ADMIN Software Role)</option>
+                          <option value="f4000000-0000-0000-0000-000000000004">HR Specialist (Rank 3 - Rank & File / STANDARD Software Role)</option>
+                          <option value="f5000000-0000-0000-0000-000000000005">External Compliance Auditor (Rank 4 - Supervisor / STANDARD Software Role + Compliance Bypass)</option>
                         </select>
                       </div>
 
@@ -2837,19 +2837,19 @@ function CoreSetupContent() {
                       {(() => {
                         // Simulated records
                         const recordMap: Record<string, any> = {
-                          'rec-a': { id: 'rec-a', entityId: 'ent-branch-mnl', departmentId: 'dept-hr', classification: DataClassification.STANDARD, actionLevel: 3, dataSubjectId: 'usr-hr-spec', payload: '$3,500 Base' },
-                          'rec-b': { id: 'rec-b', entityId: 'ent-holding', departmentId: 'dept-executive', classification: DataClassification.CONFIDENTIAL, actionLevel: 8, dataSubjectId: 'usr-ceo', payload: 'CONFIDENTIAL: Merger Plan Alpha' },
-                          'rec-c': { id: 'rec-c', entityId: 'ent-holding', departmentId: 'dept-executive', classification: DataClassification.SENSITIVE, actionLevel: 8, dataSubjectId: 'usr-ceo', payload: 'SENSITIVE SPI: $250,000 CEO Bonus' }
+                          'rec-a': { id: 'rec-a', entityId: 'ent-branch-mnl', departmentId: 'd4444444-4444-4444-4444-444444444444', classification: DataClassification.STANDARD,     actionLevel: 3, dataSubjectId: 'f4000000-0000-0000-0000-000000000004', payload: '$3,500 Base' },
+                          'rec-b': { id: 'rec-b', entityId: 'ent-holding',     departmentId: 'd7777777-7777-7777-7777-777777777777', classification: DataClassification.CONFIDENTIAL, actionLevel: 8, dataSubjectId: 'f1000000-0000-0000-0000-000000000001', payload: 'CONFIDENTIAL: Merger Plan Alpha' },
+                          'rec-c': { id: 'rec-c', entityId: 'ent-holding',     departmentId: 'd7777777-7777-7777-7777-777777777777', classification: DataClassification.SENSITIVE,    actionLevel: 8, dataSubjectId: 'f1000000-0000-0000-0000-000000000001', payload: 'SENSITIVE SPI: $250,000 CEO Bonus' }
                         };
 
                         const record = recordMap[sandboxRecordId];
                         
                         const viewerObj = {
-                          'usr-ceo': { id: 'usr-ceo', entityId: 'ent-holding', departmentId: 'dept-executive', systemRole: SystemRole.STANDARD, actionLevel: 10 },
-                          'usr-super-admin': { id: 'usr-super-admin', entityId: 'ent-holding', departmentId: 'dept-it', systemRole: SystemRole.SUPER_ADMIN, actionLevel: 8 },
-                          'usr-hr-mgr': { id: 'usr-hr-mgr', entityId: 'ent-sub-ph', departmentId: 'dept-hr', systemRole: SystemRole.ADMIN, actionLevel: 6 },
-                          'usr-hr-spec': { id: 'usr-hr-spec', entityId: 'ent-branch-mnl', departmentId: 'dept-hr', systemRole: SystemRole.STANDARD, actionLevel: 3 },
-                          'usr-auditor': { id: 'usr-auditor', entityId: 'ent-holding', departmentId: 'dept-audit', systemRole: SystemRole.STANDARD, actionLevel: 4 }
+                          'f1000000-0000-0000-0000-000000000001': { id: 'f1000000-0000-0000-0000-000000000001', entityId: 'ent-holding',    departmentId: 'd7777777-7777-7777-7777-777777777777', systemRole: SystemRole.STANDARD,    actionLevel: 10 },
+                          'f2000000-0000-0000-0000-000000000002': { id: 'f2000000-0000-0000-0000-000000000002', entityId: 'ent-holding',    departmentId: 'd1111111-1111-1111-1111-111111111111', systemRole: SystemRole.SUPER_ADMIN, actionLevel: 8  },
+                          'f3000000-0000-0000-0000-000000000003': { id: 'f3000000-0000-0000-0000-000000000003', entityId: 'ent-sub-ph',     departmentId: 'd4444444-4444-4444-4444-444444444444', systemRole: SystemRole.ADMIN,       actionLevel: 6  },
+                          'f4000000-0000-0000-0000-000000000004': { id: 'f4000000-0000-0000-0000-000000000004', entityId: 'ent-branch-mnl', departmentId: 'd4444444-4444-4444-4444-444444444444', systemRole: SystemRole.STANDARD,    actionLevel: 3  },
+                          'f5000000-0000-0000-0000-000000000005': { id: 'f5000000-0000-0000-0000-000000000005', entityId: 'ent-holding',    departmentId: 'd7777777-7777-7777-7777-777777777777', systemRole: SystemRole.STANDARD,    actionLevel: 4  }
                         }[sandboxViewerId];
 
                         let allowed = false;
@@ -2872,7 +2872,7 @@ function CoreSetupContent() {
                             } else {
                               // Standard user cascade check
                               let allowedEntities = [viewerObj.entityId];
-                              if (viewerObj.id === 'usr-hr-spec') {
+                              if (viewerObj.id === 'f4000000-0000-0000-0000-000000000004') {
                                 // Exact Entity only
                               } else {
                                 // Downward Cascade
@@ -2889,7 +2889,7 @@ function CoreSetupContent() {
                             if (record.actionLevel <= viewerObj.actionLevel) {
                               allowed = true;
                               isRedacted = false;
-                            } else if (viewerObj.id === 'usr-auditor') {
+                            } else if (viewerObj.id === 'f5000000-0000-0000-0000-000000000005') {
                               allowed = true;
                               isRedacted = false;
                               bypassLogged = true;
@@ -2902,10 +2902,10 @@ function CoreSetupContent() {
                               reason = 'Insufficient Rank for SENSITIVE data';
                             } else {
                               // Consent required
-                              if (viewerObj.id === 'usr-auditor' && sandboxConsentActive) {
+                              if (viewerObj.id === 'f5000000-0000-0000-0000-000000000005' && sandboxConsentActive) {
                                 allowed = true;
                                 isRedacted = false;
-                              } else if (viewerObj.id === 'usr-ceo') {
+                              } else if (viewerObj.id === 'f1000000-0000-0000-0000-000000000001') {
                                 allowed = true;
                                 isRedacted = false;
                               } else {

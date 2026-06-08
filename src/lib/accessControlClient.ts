@@ -35,20 +35,27 @@ export enum CascadeScope {
   DOWNWARD_CASCADE = 'DOWNWARD_CASCADE'
 }
 
+// ─── Stable user IDs — must match prisma/seed.ts constants ──────────────────
+export const SEED_USER_CEO      = 'f1000000-0000-0000-0000-000000000001';
+export const SEED_USER_ADMIN    = 'f2000000-0000-0000-0000-000000000002';
+export const SEED_USER_HR_MGR   = 'f3000000-0000-0000-0000-000000000003';
+export const SEED_USER_HR_SPEC  = 'f4000000-0000-0000-0000-000000000004';
+export const SEED_USER_AUDITOR  = 'f5000000-0000-0000-0000-000000000005';
+
 // Mock DB Fallback storage
 export let mockEntities = [
-  { id: 'ent-holding', name: 'ACME Holding Group', type: EntityType.HOLDING, parentId: null as string | null },
-  { id: 'ent-sub-ph', name: 'ACME Philippines Corp', type: EntityType.SUBSIDIARY, parentId: 'ent-holding' },
-  { id: 'ent-branch-mnl', name: 'ACME Manila Branch', type: EntityType.BRANCH, parentId: 'ent-sub-ph' },
-  { id: 'ent-branch-cebu', name: 'ACME Cebu Branch', type: EntityType.BRANCH, parentId: 'ent-sub-ph' }
+  { id: 'ent-holding',    name: 'ACME Holding Group',      type: EntityType.HOLDING,    parentId: null as string | null },
+  { id: 'ent-sub-ph',     name: 'ACME Philippines Corp',   type: EntityType.SUBSIDIARY, parentId: 'ent-holding' },
+  { id: 'ent-branch-mnl', name: 'ACME Manila Branch',      type: EntityType.BRANCH,     parentId: 'ent-sub-ph' },
+  { id: 'ent-branch-cebu',name: 'ACME Cebu Branch',        type: EntityType.BRANCH,     parentId: 'ent-sub-ph' },
 ];
 
 export let mockUsers = [
-  { id: 'usr-ceo', entityId: 'ent-holding', departmentId: 'dept-executive', systemRole: SystemRole.STANDARD, actionLevel: 10, managerId: null as string | null, name: 'CEO Boss', email: 'ceo@acme.com' },
-  { id: 'usr-super-admin', entityId: 'ent-holding', departmentId: 'dept-it', systemRole: SystemRole.SUPER_ADMIN, actionLevel: 8, managerId: 'usr-ceo', name: 'System Admin', email: 'admin@acme.com' },
-  { id: 'usr-hr-mgr', entityId: 'ent-sub-ph', departmentId: 'dept-hr', systemRole: SystemRole.ADMIN, actionLevel: 6, managerId: 'usr-ceo', name: 'HR Manager', email: 'hr.mgr@acme.com' },
-  { id: 'usr-hr-spec', entityId: 'ent-branch-mnl', departmentId: 'dept-hr', systemRole: SystemRole.STANDARD, actionLevel: 3, managerId: 'usr-hr-mgr', name: 'HR Specialist', email: 'hr.spec@acme.com' },
-  { id: 'usr-auditor', entityId: 'ent-holding', departmentId: 'dept-audit', systemRole: SystemRole.STANDARD, actionLevel: 4, managerId: 'usr-ceo', name: 'External Auditor', email: 'auditor@acme.com' }
+  { id: SEED_USER_CEO,     entityId: 'ent-holding',     departmentId: 'd7777777-7777-7777-7777-777777777777', systemRole: SystemRole.STANDARD,    actionLevel: 10, managerId: null as string | null, name: 'CEO Boss',        email: 'ceo@acme.com'       },
+  { id: SEED_USER_ADMIN,   entityId: 'ent-holding',     departmentId: 'd1111111-1111-1111-1111-111111111111', systemRole: SystemRole.SUPER_ADMIN, actionLevel: 8,  managerId: SEED_USER_CEO,         name: 'System Admin',    email: 'admin@acme.com'     },
+  { id: SEED_USER_HR_MGR,  entityId: 'ent-sub-ph',      departmentId: 'd4444444-4444-4444-4444-444444444444', systemRole: SystemRole.ADMIN,       actionLevel: 6,  managerId: SEED_USER_CEO,         name: 'HR Manager',      email: 'hr.mgr@acme.com'    },
+  { id: SEED_USER_HR_SPEC, entityId: 'ent-branch-mnl',  departmentId: 'd4444444-4444-4444-4444-444444444444', systemRole: SystemRole.STANDARD,    actionLevel: 3,  managerId: SEED_USER_HR_MGR,      name: 'HR Specialist',   email: 'hr.spec@acme.com'   },
+  { id: SEED_USER_AUDITOR, entityId: 'ent-holding',     departmentId: 'd7777777-7777-7777-7777-777777777777', systemRole: SystemRole.STANDARD,    actionLevel: 4,  managerId: SEED_USER_CEO,         name: 'External Auditor',email: 'auditor@acme.com'   },
 ];
 
 export let mockRoles = [
@@ -59,10 +66,10 @@ export let mockRoles = [
 ];
 
 export let mockUserRoleAssignments = [
-  { id: 'ura-1', userId: 'usr-super-admin', roleId: 'role-super-admin', inheritanceScope: CascadeScope.DOWNWARD_CASCADE },
-  { id: 'ura-2', userId: 'usr-hr-mgr', roleId: 'role-hr-mgr', inheritanceScope: CascadeScope.DOWNWARD_CASCADE },
-  { id: 'ura-3', userId: 'usr-hr-spec', roleId: 'role-hr-spec', inheritanceScope: CascadeScope.EXACT_ENTITY },
-  { id: 'ura-4', userId: 'usr-auditor', roleId: 'role-auditor', inheritanceScope: CascadeScope.EXACT_ENTITY }
+  { id: 'ura-1', userId: SEED_USER_ADMIN,   roleId: 'role-super-admin', inheritanceScope: CascadeScope.DOWNWARD_CASCADE },
+  { id: 'ura-2', userId: SEED_USER_HR_MGR,  roleId: 'role-hr-mgr',      inheritanceScope: CascadeScope.DOWNWARD_CASCADE },
+  { id: 'ura-3', userId: SEED_USER_HR_SPEC, roleId: 'role-hr-spec',     inheritanceScope: CascadeScope.EXACT_ENTITY    },
+  { id: 'ura-4', userId: SEED_USER_AUDITOR, roleId: 'role-auditor',     inheritanceScope: CascadeScope.EXACT_ENTITY    },
 ];
 
 export let mockMenus = [

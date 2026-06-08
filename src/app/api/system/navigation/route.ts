@@ -4,7 +4,7 @@ import { checkNavigationAccess, mockMenus } from '@/lib/accessControl';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId') || 'usr-super-admin';
+    const userId = searchParams.get('userId') || 'f2000000-0000-0000-0000-000000000002';
 
     // Filter menus that the user is allowed to view
     const allowedMenus: any[] = [];

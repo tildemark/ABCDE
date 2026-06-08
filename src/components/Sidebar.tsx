@@ -79,7 +79,8 @@ function SidebarContent() {
   const searchParams = useSearchParams();
 
   // Pick user dynamically to preview different hats (e.g. HR Manager vs HR Specialist vs Auditor)
-  const currentUserId = searchParams.get('userId') || 'usr-super-admin';
+  // Default to System Admin UUID — must match SEED_USER_ADMIN in accessControlClient.ts
+  const currentUserId = searchParams.get('userId') || 'f2000000-0000-0000-0000-000000000002';
 
   // Helper: check if a nav path (possibly with ?query) matches current location
   const isPathActive = (navPath: string): boolean => {

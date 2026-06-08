@@ -33,7 +33,7 @@ export async function GET() {
         },
         roleAssignments: {
           include: {
-            role: { select: { name: true, level: true } }
+            role: { select: { name: true } }
           }
         }
       },
