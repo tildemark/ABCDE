@@ -93,6 +93,23 @@ async function main() {
     }
   }
 
+  // ── 5. Default Root Branch ────────────────────────────────────────────────
+  console.log('🏢 Seeding Default Root Branch...');
+  const ROOT_BRANCH_ID = 'b1111111-1111-1111-1111-111111111111';
+  await prisma.branch.upsert({
+    where: { id: ROOT_BRANCH_ID },
+    create: {
+      id:             ROOT_BRANCH_ID,
+      tenantId:       TENANT_ID,
+      name:           'My Company (HQ)',
+      region:         'Metro Manila',
+      isHeadquarters: true,
+      entityType:     'HOLDING',
+    },
+    update: {}, // don't overwrite if already edited
+  });
+  console.log('   ✓ Default Root Branch (HQ)');
+
   console.log('');
   console.log('✅ Minimal seed complete.');
   console.log('');
